@@ -60,7 +60,7 @@ if uploaded_file is not None:
     df_clean['Category'] = df_clean['Description'].apply(categorize_transaction)
 
     # create a month-year column for grouping
-    df_clean['Month'] = df_clean['Date'].dt.to_period('M')
+    df_clean['Month'] = df_clean['Date'].dt.to_period('ME')
 
     st.success("Data successfully cleaned and mapped")
     st.subheader("Data With Categories")
