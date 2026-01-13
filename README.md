@@ -59,8 +59,11 @@ have your docker or docker desktop to install redis and qdrant(optional, since t
 ##
 #
 ## Ongoing Implementation
-### Budget tracking and goal system
-
+### Budget tracking and goal system ❌
+### Enhance the UI frontend ❌
+### Implement Security,Monitoring and Optimization ❌
+##
+#
 **⚠️ PROPRIETARY SOFTWARE - ALL RIGHTS RESERVED**
 
 This repository contains proprietary source code. No license is granted
