@@ -55,6 +55,7 @@ have your docker or docker desktop to install redis and qdrant(optional, since t
 ### Implementing caching and indexing ✅
 ### Implementing AI advice and fallback secondary LLM model ✅
 ### Implementing Forecasing and Predictive Analysis ✅
+### Implemented Huggingface embedding model ✅
 ### Implementing documents cloud storage using Supabase ✅
 ### Implement batch processing for heavy documents load ✅
 ##
