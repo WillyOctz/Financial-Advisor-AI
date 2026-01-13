@@ -57,6 +57,9 @@ have your docker or docker desktop to install redis and qdrant(optional, since t
 ### Implementing documents cloud storage using Supabase ✅
 ### Implement batch processing for heavy documents load ✅
 ##
+#
+## Ongoing Implementation
+### Budget tracking and goal system
 
 **⚠️ PROPRIETARY SOFTWARE - ALL RIGHTS RESERVED**
 
