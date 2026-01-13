@@ -50,6 +50,7 @@ have your docker or docker desktop to install redis and qdrant(optional, since t
 ### Implementing JWT authentication and Route protection ✅
 ### Implementing extraction and chunking for document format .csv and .xlsx ✅
 ### Implementing API endpoint for upload,analysis,transaction history and AI advice chat ✅
+### Implementing Basic frontend ✅
 ### Implementing financial benchmarking(charts,income,expense,net savings and financial health score) ✅
 ### Implementing caching and indexing ✅
 ### Implementing AI advice and fallback secondary LLM model ✅
