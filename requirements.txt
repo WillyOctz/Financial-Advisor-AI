@@ -1,8 +1,0 @@
-streamlit
-pandas
-numpy
-plotly-express
-openai  # For the LLM part
-python-dotenv
-prophet  # For forecasting
-google-generativeai

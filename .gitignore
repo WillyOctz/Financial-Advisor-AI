@@ -24,8 +24,16 @@ Thumbs.db
 *.csv
 *.pkl
 *.pickle
-*.json
 *.xlsx
 
 # Logs
 *.log
+
+# database migrations
+alembic.ini
+alembic/
+
+# others
+dataset_sample/
+test.py
+redis.conf
