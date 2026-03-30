@@ -11,8 +11,11 @@ from datetime import datetime, timedelta
 import plotly.graph_objects as go
 import plotly.express as px
 import json
+import logging
 from scipy import stats
 import traceback
+
+logger = logging.getLogger(__name__)
 
 class ForecastingService:
     def __init__(self, db: Session):
@@ -213,6 +216,9 @@ class ForecastingService:
                 for category in original_categories:
                     # aggregate category presence at monthly level
                     category_series = df.set_index('ds')[f'category_{category}'].resample('M').mean()
+                    category_series = category_series.reindex(df_monthly['ds'].values)
+                    category_series = category_series.fillna(0)
+                    
                     df_monthly[f'category_{category}'] = category_series.values
 
             model.fit(df_monthly)
@@ -351,6 +357,15 @@ class ForecastingService:
         
     def _calculate_forecast_accuracy(self, historical: pd.DataFrame, model: Prophet) -> Dict[str, float]:
         """Calculate forecast accuracy metrics using cross-validation"""
+        if len(historical) < 6:
+            logger.info("Insufficient data for cross validation, returning estimates")
+            return {
+                'mae': 0.0, 'mape': 0.0, 'rmse': 0.0,
+                'mdape': 0.0, 'coverage': 0.0,
+                'interpretation': 'Insufficient data for accuracy metrics',
+                'confidence': 'low'
+            }
+        
         try:
             # Perform cross-validation
             df_cv = cross_validation(model, initial='180 days', period='30 days', horizon='90 days')

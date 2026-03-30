@@ -1,4 +1,7 @@
 from datetime import timedelta
+import logging
+
+logger = logging.getLogger(__name__)
 
 CACHE_CONFIG = {
     'TTL': {

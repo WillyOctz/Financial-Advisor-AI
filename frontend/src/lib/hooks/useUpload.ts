@@ -1,6 +1,5 @@
 import { ColumnMapping, Transaction } from "@/types/financial";
 import { useState } from "react";
-import { documentsApi } from "../api/documents";
 import { apiClient } from "../api/client";
 
 interface UseUploadResult {
@@ -10,7 +9,7 @@ interface UseUploadResult {
   uploadDocument: (
     file: File,
     userId: number,
-    columnMapping: ColumnMapping
+    columnMapping: ColumnMapping,
   ) => Promise<void>;
   clearUpload: () => void;
 }
@@ -25,7 +24,7 @@ export const useUpload = (): UseUploadResult => {
   const uploadDocument = async (
     file: File,
     userId: number,
-    columnMapping: ColumnMapping
+    columnMapping: ColumnMapping,
   ) => {
     setIsUploading(true);
     setUploadError(null);
@@ -37,26 +36,30 @@ export const useUpload = (): UseUploadResult => {
       formData.append("column_mapping", JSON.stringify(columnMapping));
 
       console.log("📤 Uploading file:", file.name);
-      console.log("👤 User ID:", userId);
-      console.log("🗺️ Column mapping:", columnMapping);
 
       const res = await apiClient.post("/upload", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
       });
-      const transactionsResponse = await apiClient.get(`/${res.data.document_id}/transactions`);
+
+      console.log("Upload started with an ID:", res.data.upload_id);
+      const transactionsResponse = await apiClient.get(
+        `/${res.data.document_id}/transactions`,
+      );
       setUploadedTransactions(transactionsResponse.data);
     } catch (error: any) {
       setUploadError(error.response?.data?.detail || "Upload failed");
+      throw error;
     } finally {
-      setIsUploading(false);
+      //setIsUploading(false);
     }
   };
 
   const clearUpload = () => {
     setUploadedTransactions([]);
     setUploadError(null);
+    setIsUploading(false);
   };
 
   return {

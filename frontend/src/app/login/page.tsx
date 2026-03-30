@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../../../contexts/AuthContexts";
@@ -14,7 +14,14 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, requires2FA, partialToken } = useAuth();
+
+  // if already in 2fa flow, redirect to verify-2fa page
+  useEffect(() => {
+    if (requires2FA && partialToken) {
+      router.push("/verify-2fa");
+    }
+  }, [requires2FA, partialToken, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,8 +39,25 @@ export default function LoginPage() {
 
       if (res.ok) {
         const data = await res.json();
-        login(data.access_token, data.user);
-        router.push("/dashboard");
+
+        if (data.requires_2fa) {
+          // 2fa required
+          login(data.partial_token, {
+            id: 0,
+            email,
+            first_name: "",
+            last_name: "",
+            created_at: new Date().toISOString(),
+            is_verified: true,
+            is_active: true,
+            two_factor_method: data.method,
+          });
+          data.partial_token; // pass it as partial token parameter
+        } else {
+          // no 2fa required
+          login(data.access_token, data.user);
+          router.push("/dashboard");
+        }
       } else {
         const errorData = await res.json();
         setError(errorData.detail || "Login failed");

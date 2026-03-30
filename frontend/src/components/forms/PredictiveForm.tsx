@@ -291,7 +291,7 @@ const PredictiveForm: React.FC<PredictiveFormProps> = ({ userId }) => {
                       <div key={key} className="space-y-2">
                         <div className="flex justify-between items-center">
                           <span className="font-medium capitalize">
-                            {key.replace("_", " ")}
+                            {key.replace("_"," ")}
                           </span>
                           <span className="font-bold">
                             {component.score}/25

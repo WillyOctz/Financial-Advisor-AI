@@ -22,7 +22,7 @@ class RAGService:
         """Generate AI advice using RAG along with fallback LLM support"""
         try:
             # Search for relevant document chunks
-            relevant_chunks = self.vector_search.search_similar_chunks(query, user_id)
+            relevant_chunks = self.vector_search.search_similar_transactions(query, user_id)
 
             logger.info(f"Found {len(relevant_chunks)} relevant chunks for RAG")
 

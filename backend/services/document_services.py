@@ -2,19 +2,19 @@ import pandas as pd
 import numpy as np
 from sqlalchemy.orm import Session
 from backend.models.database import FinancialDocument, Transaction, DocumentChunk, ExtractedTransactions
-from backend.models.schemas import TransactionCreate, ChunkCreate
+from backend.services.progress_tracker import progress_tracker, ProgressStage
 from backend.services.batch_processor import BatchProcessor
 from backend.db.redis_client import RedisCache, cached
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from backend.features_enginering.features import categorize_transaction
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Dict, Callable
 import hashlib
 from datetime import datetime, timedelta
 import os
+import asyncio
 import openpyxl
 import traceback
-import re
 from collections import defaultdict
-import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class DocumentService:
     def __init__(self, db: Session):
         self.db = db
-
+    
     def _read_dataframe(self, file_path: str) -> pd.DataFrame:
         """Method to unify to read CSV or Excel files"""
         try:
@@ -41,40 +41,67 @@ class DocumentService:
                 return pd.read_csv(file_path, engine='python', on_bad_lines='skip')
             
             elif file_path.endswith('.xlsx') | file_path.endswith('.xls'):
-                # Try with pandas first
                 try:
-                    excel_file = pd.ExcelFile(file_path, engine='openpyxl')
-                    sheet_names = excel_file.sheet_names
-                    print(f"📄 Excel sheets found: {sheet_names}")
-
-                    # Try each sheet to find data
-                    for sheet in sheet_names:
-                        try:
-                            df = pd.read_excel(file_path, sheet_name=sheet, engine='openpyxl')
-                            if not df.empty and len(df.columns) > 1:
-                                print(f"✅ Found data in sheet: '{sheet}' with {len(df)} rows")
-                                return df
-                        except Exception as e:
-                            print(f"⚠️ Could not read sheet '{sheet}': {e}")
-                            continue
-
-                    # If all sheets failed, try openpyxl directly
-                    print(f"🔄 Trying openpyxl direct reading...")
-                    workbook = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
-                    sheet = workbook.active
-                    data = sheet.values
-                    cols = next(data)
-                    df = pd.DataFrame(data, columns=cols)
-                    print(f"✅ Openpyxl loaded {len(df)} rows")
-                    return df
+                    # use pandas to explicit engine close
+                    with pd.ExcelFile(file_path, engine='openpyxl') as excel_file:
+                        sheet_names = excel_file.sheet_names
+                        print(f"Excel sheets found: {sheet_names}")
+                    
+                        for sheet in sheet_names:
+                            try:
+                                df = pd.read_excel(excel_file, sheet_name=sheet)
+                                if not df.empty and len(df.columns) > 1:
+                                    print(f"Found data in sheet: '{sheet}' with {len(df)} rows")
+                                    return df
+                            except Exception as e:
+                                print(f"Could not read sheet '{sheet}': {e}")
+                                continue
+                        
+                    logger.info(f"Trying openpyxl direct reading...")
+                    from openpyxl import load_workbook
+                
+                    workbook = load_workbook(
+                        file_path,
+                        read_only=True,
+                        data_only=True,
+                        keep_links=False # this will prevent the file locking issue
+                    )
+                
+                    try:
+                        sheet = workbook.active
+                        data = list(sheet.values)
+                    
+                        if not data:
+                            print("No data found in workbook")
+                            workbook.close()
+                            return pd.DataFrame()
+                    
+                        cols = data[0]
+                        df_data = data[1:] if len(data) > 1 else []
+                        df = pd.DataFrame(df_data, columns=cols)
+                        logger.info(f"Openpyxl loaded {len(df)} rows")
+                    
+                        workbook.close()
+                        return df
+                    except Exception as e:
+                        workbook.close()
+                        print(f"Openpyxl read failed: {e}")
+                        raise
                 
                 except Exception as e:
-                    print(f"❌ Excel read failed: {e}")
-                    raise
+                    print(f"Excel read failed: {e}")
+                    try:
+                        df = pd.read_excel(file_path, engine='openpyxl')
+                        print(f"Fallback read successful: {len(df)} rows")
+                        return df
+                    except Exception as e:
+                        print(f"Fallback also failed: {e}")
+                        raise
+        
         except Exception as e:
-            print(f"❌ Failed to read file: {e}")
+            print(f"Failed to read file: {e}")
             raise
-
+                          
     def extract_transactions(self, file_path: str, user_id: int, document_id: int, column_mapping: dict) -> List[Transaction]:
         """Extract transactions from uploaded document with proper column mapping and template support"""
         try:
@@ -92,7 +119,7 @@ class DocumentService:
             amount_col = self._find_best_column_match(df.columns, column_mapping.get('amount', 'amount'))
             type_col = self._find_best_column_match(df.columns, column_mapping.get('type', 'type'))
 
-            transactions = []
+            transactions_data = []
             successfull_rows = 0
             skipped_rows = 0
 
@@ -101,11 +128,13 @@ class DocumentService:
                 try:
                     # Skip if amount is empty
                     if pd.isna(row.get(amount_col)):
+                        logger.info(f"⚠️ Row {index}: Skipping - Amount is empty")
                         skipped_rows += 1
                         continue
 
                     # parse amount
                     amount_raw = row[amount_col]
+                    logger.info(f"🔍 Parsing amount from raw value: {amount_raw}")
 
                     # Convert to string if not already
                     if not isinstance(amount_raw, str):
@@ -136,6 +165,7 @@ class DocumentService:
                     # parse date
                     date = self._parse_date(row.get(date_col, ''))
                     if pd.isna(date):
+                        logger.info(f"⚠️ Row {index}: Skipping - Date parsing failed")
                         skipped_rows += 1
                         continue
 
@@ -153,20 +183,19 @@ class DocumentService:
                     transaction_data = {
                         "document_id": document_id,
                         "user_id": user_id,
-                        "date": date,
-                        "description": description,
+                        "date": date.to_pydatetime() if isinstance(date, pd.Timestamp) else date,
+                        "description": description[:255],
                         "amount": float(amount),
                         "type": transaction_type,
-                        "category": category
+                        "category": category,
+                        "month": date.strftime('%Y-%m') if hasattr(date, 'strftime') else str(date)[:7],
+                        "created_at": datetime.now()
                     }
 
-                    db_transaction = Transaction(**transaction_data)
-                    db_transaction.month = db_transaction.date.strftime('%Y-%m')
-                    self.db.add(db_transaction)
-                    transactions.append(db_transaction)
+                    transactions_data.append(transaction_data)
                     successfull_rows += 1
 
-                    if successfull_rows % 10 == 0:
+                    if successfull_rows % 100 == 0:
                         print(f"📝 Processed {successfull_rows} transactions...")
 
                 except Exception as e:
@@ -174,10 +203,14 @@ class DocumentService:
                     skipped_rows += 1
                     continue
 
+            if transaction_data:
+                self.db.bulk_insert_mappings(Transaction, transaction_data)
             self.db.commit()
-            print(f"✅ Successfully processed {successfull_rows} transactions, skipped {skipped_rows}")
-
-            return transactions
+            
+            logger.info(f"Bulk inserted {successfull_rows} transactions, skipped {skipped_rows}")
+            
+            # return count instead of the ORM objects - bulk_insert_mappings does not
+            return successfull_rows
         except Exception as e:
             self.db.rollback()
             print(f"❌ Error in extract_transactions: {e}")
@@ -221,6 +254,26 @@ class DocumentService:
                 # Remove time component if present
                 date_value = date_value.split(' ')[0].split('T')[0]
 
+            # handle DD/MM/YYYY format
+            if '/' in date_value:
+                try:
+                    day, month, year = date_value.split('/')
+                    # check if date is valid
+                    if int(day) > 31 or int(month) > 12:
+                        logger.warning(f"Invalid date format: {date_value}")
+                        return pd.NaT
+                
+                    # fix invalid dates (like 31/06/2025 to 30/06/2025)
+                    try:
+                        return pd.Timestamp(int(year), int(month), int(day))
+                    except ValueError:
+                        # if day is invalid, set to last day of month
+                        import calendar
+                        last_day = calendar.monthrange(int(year), int(month))[1]
+                        day = min(int(day), last_day)
+                        return pd.Timestamp(int(year), int(month), day)
+                except Exception:
+                    pass
             return pd.to_datetime(date_value, errors='coerce', dayfirst=False)
         except:
             return pd.NaT
@@ -269,18 +322,20 @@ class DocumentService:
                     "char_count": len(chunk_text)
                 }
 
-                # Create chunk object
-                chunk_data = {
-                    "document_id": document_id,
-                    "chunk_text": chunk_text,
-                    "chunk_index": chunk_index,
-                    "chunk_metadata": metadata
-                }
-
-                db_chunk = DocumentChunk(**chunk_data)
-                self.db.add(db_chunk)
-                print(f"✅ Created {len(chunks)} advanced document chunks")
-                return chunks
+                chunks.append(DocumentChunk(
+                    document_id=document_id,
+                    chunk_text=chunk_text,
+                    chunk_index=chunk_index,
+                    chunk_metadata=metadata
+                ))                
+                
+            # add-all() sends one batched INSERT instead per one chunk that will took long time
+            if chunks:
+                self.db.add_all(chunks)
+            self.db.commit()
+            
+            logger.info(f"Created {len(chunks)} document chunks for document {document_id}")
+            return chunks
             
         except Exception as e:
             self.db.rollback()
@@ -413,7 +468,7 @@ class DocumentService:
         return chunks
         
     def _determine_transaction_type(self, type_str: str, amount: float, description: str = "") -> str:
-        """Determine if transaction is income or expense with multiple formats"""
+        """Determine if transaction is income oFr expense with multiple formats"""
         if pd.isna(type_str) or type_str == "":
             return "INCOME" if amount > 0 else "EXPENSE"
         
@@ -517,156 +572,391 @@ class DocumentService:
             print(f"❌ Debug error: {e}")
             print(f"🔍 Stack trace: {traceback.format_exc()}")
 
+class ProcessingCancelledError(Exception):
+    pass
         
 class EnhancedDocumentService(DocumentService):
-    def __init__(self, db: Session):
+    def __init__(self, db: Session = None):
         super().__init__(db)
-        self.batch_processor = BatchProcessor(db, batch_size=500)
+        self.batch_processor = None
         self.cache = RedisCache()
+        self.current_upload_id = None
+        self.current_user_id = None   
+        self.cancellation_checked = False
+        self.db = db   
+        self.enable_rate_limiting = True
+        
+    def set_progress(self, stage_index: int, custom_details: str = None, metadata: dict = None):
+        """Update progress for SSE using stage definitions"""
+        if not self.current_upload_id or not self.current_user_id:
+            logger.warning(f"No upload ID or user ID set for progress tracking")
+            return
+        
+        stages = progress_tracker.stage_definitions.get("document_processing", [])
+        
+        if 0 <= stage_index < len(stages):
+            stage = stages[stage_index]
+            details = custom_details or stage.description
+            
+            percentage = stage.weight
+            
+            # ensuring a valid integer percentage
+            if isinstance(percentage, (int, float)):
+                percentage = int(percentage)
+            else:
+                percentage = 0
+            
+            progress_tracker.set_progress(
+                self.current_user_id,
+                self.current_upload_id,
+                stage.name,
+                stage.weight,
+                details,
+                metadata
+            )
+            
+            logger.info(f"Progress set: {stage.name} - {percentage}% - {details}")
+        else:
+            logger.error(f"Invalid stage index: {stage_index}")
+            
+    def check_cancellation(self) -> bool:
+        """Check if processing should be cancelled"""
+        if self.cancellation_checked:
+            return False
+        
+        if self.current_upload_id and self.current_user_id:
+            cancelled = progress_tracker.is_cancelled(self.current_user_id, self.current_upload_id)
+            if cancelled:
+                self.cancellation_checked = True
+                logger.info(f"Processing cancelled for upload {self.current_upload_id}")
+            return cancelled
+        return False
+    
+    def create_cancellation_check(self) -> Callable[[], bool]:
+        """Create cancellation check function for batch processor"""
+        def cancellation_check():
+            return self.check_cancellation()
+        return cancellation_check
 
     def _read_dataframe_chunked(self, file_path: str, chunk_size: int = 10000) -> pd.DataFrame:
-        """Read large files in chunks"""
-        if file_path.endswith('.csv'):
-            # Use chunk reading for CSV
-            chunks = []
-            for chunk in pd.read_csv(file_path, chunksize=chunk_size, low_memory=False):
-                chunks.append(chunk)
-            return pd.concat(chunks, ignore_index=True)
+        """Read a file into single frame.
+            The chunk_size parameter is kept for API compatibility but is not used
+            for in-memory loading — chunked reading only helps when each chunk can
+            be processed independently (e.g. streamed to a pipeline). Here we need
+            the full DataFrame for column detection and transaction extraction, so
+            loading all rows at once is both correct and simpler.
+ 
+            For CSV files pd.read_csv() with low_memory=False is used directly.
+            The old pattern of read-in-chunks → pd.concat() produced the same
+            in-memory result with extra overhead and is removed.
+        """
+        if file_path.endswith('csv'):
+            return pd.read_csv(file_path, low_memory=False)
         else:
-            # For excel
             return self._read_dataframe(file_path)
         
-    @cached(category='document_processing', ttl=timedelta(hours=1))
-    def process_document(self, file_path: str, user_id: int, filename: str, column_mapping: dict) -> dict:
-        """Optimized document processing with caching and batch processing with extracted storage chunks"""
-        # changed due to using supabase file path
-        try:
-            with open(file_path, 'rb') as f:
-                file_content = f.read()
-            cache_key = f"{user_id}:{hashlib.md5(file_content).hexdigest()}"
-        except:
-            cache_key = f"{user_id}:{filename}:{hashlib.md5(str(column_mapping).encode()).hexdigest()}"
-    
+    #@cached(category='document_processing', ttl=timedelta(hours=1))
+    def process_document(self, file_path: str, user_id: int, filename: str, column_mapping: dict, cancellation_check=None) -> dict:
+        """Optimized document processing with caching and progress tracking along with cancellation progress"""
         # Check cache first
-        cached_result = self.cache.get('document_processing', cache_key)   
-        if cached_result:  
-            logger.info(f"📄 Using cached document processing result for {filename}")  
-            return cached_result   
-    
-        try:   
-            logger.info(f"🚀 Starting document processing for {filename}")
+        #cached_result = self.cache.get('document_processing', cache_key)   
+        #if cached_result:  
+            #logger.info(f"📄 Using cached document processing result for {filename}")  
+            #return cached_result 
+        
+        # self track id
+        self.current_user_id = user_id
+        
+        # cancellation check start point
+        if cancellation_check is None:
+            cancellation_check = self.create_cancellation_check()
+        
+        try:
+            # initial stage  
+            self.set_progress(0, f"Starting process for {filename}")
             
-            # check the file exists
+            # stage 1 : validating
+            self.set_progress(1, "Checking file format...")
             if not os.path.exists(file_path):
                 raise FileNotFoundError(f"File not found: {file_path}")
             
-            file_size = os.path.getsize(file_path)
-            logger.info(f"File size: {file_size} bytes")
+            # check cancellation
+            if cancellation_check and cancellation_check():
+                raise ProcessingCancelledError("Processing cancelled before validation")
             
-            # get the existing document from the documents.py endpoint
-            document = self.db.query(FinancialDocument).filter(
-                FinancialDocument.user_id == user_id,
-                FinancialDocument.filename == filename
-            ).order_by(FinancialDocument.id.desc()).first()
+            # stage 2 : reading file
+            self.set_progress(2, f"Reading {filename}...")
+            df = self._read_dataframe_chunked(file_path)
             
-            if not document:
-                # Create document record if it's not exist
-                document = FinancialDocument(  
-                    user_id=user_id,   
-                    filename=filename, 
-                    file_path=file_path,   
-                    file_size=file_size   
-                )  
-                self.db.add(document)  
-                self.db.commit()   
-                self.db.refresh(document)  
-        
-            logger.info(f"Using document record with ID : {document.id}")  
-
-            # Read file in chunks for large file   
-            logger.info(f"📖 Reading file: {file_path}")   
-            df = self._read_dataframe_chunked(file_path)   
-            logger.info(f"📊 File loaded: {len(df)} rows, {len(df.columns)} columns")  
-
-            # Process transactions in batches and extracted chunks  
-            logger.info("🔄 Processing transactions in batches...")
-            transactions_data, extracted_data = self._prepare_transactions_batch(df, user_id, document.id, column_mapping) 
-            logger.info(f"📝 Prepared {len(transactions_data)} transactions for batch processing") 
-        
-            transaction_count = self.batch_processor.process_transactions_batch(transactions_data) 
-            logger.info(f"✅ Processed {transaction_count} transactions")
+            # check cancellation
+            if cancellation_check and cancellation_check():
+                raise ProcessingCancelledError("Processing cancelled during file reading")
             
-            # Storing the extracted document in ExtractedTransactions
-            if extracted_data:
-                logger.info(f"Storing {len(extracted_data)} extracted transactions...")
-                for ext_record in extracted_data:
-                    try:
-                        existing = self.db.query(ExtractedTransactions).filter(
-                            ExtractedTransactions.user_id == user_id,
-                            ExtractedTransactions.document_id == document.id,
-                            ExtractedTransactions.raw_text == ext_record.get('raw_text', '')
-                        ).first()
-                        
-                        if not existing:
-                            extracted_txn = ExtractedTransactions(**ext_record)
-                            self.db.add(extracted_txn)
-                        else:
-                            logger.debug(f"Skipping duplicate extracted transaction...")
-                    except Exception as e:
-                        logger.warning(f"Failed to store extracted transaction: {e}")
+            # stage 3 : Parsing data
+            self.set_progress(3, f"Parsing {len(df)} rows...")
+            document = self.get_or_create_document(self.db, user_id, filename, file_path)
+            
+            # stage 4 : extracting transactions
+            self.set_progress(4, "Extracting transactions from data...")
+            transactions_data, extracted_data = self._prepare_transactions_batch(df, user_id, document.id, column_mapping, self.db, cancellation_check)
+            
+             # check cancellation
+            if cancellation_check and cancellation_check():
+                raise ProcessingCancelledError("Processing cancelled during transaction extraction")
+            
+            # stage 5 : Categorizing
+            self.set_progress(5, f"Categorizing {len(transactions_data)} transactions...")
+            
+            # stage 6 : batch processing
+            self.set_progress(6, "Processing transactions in batches...")
+            
+            # initialize batch processor with progress callback
+            if not self.batch_processor:
+                from backend.services.vector_search import VectorSearchService
+                vector_service = VectorSearchService(self.db)
                 
-                self.db.commit()
-                logger.info("Stored extracted transactions")
-             
-            # Generate document chunks in parallel 
-            logger.info("🔄 Generating document chunks...")
-            chunks_data = []   
-            for chunk_batch in self.batch_processor.chunk_documents_batch(df, document.id):
-                chunks_data.extend(chunk_batch)
-            logger.info(f"📄 Created {len(chunks_data)} chunks")   
-
-            # Generate and store embeddings in batches 
-            if chunks_data:
-                logger.info("🧠 Generating embeddings...") 
-                texts = [chunk['chunk_text'] for chunk in chunks_data] 
-                embeddings = self.batch_processor.generate_embeddings_batch(texts, batch_size=50)  
-                logger.info(f"✅ Generated {len(embeddings)} embeddings")  
+                def batch_progress_callback(stage: str, percentage: int):
+                    """Callback from batch processor"""
+                    # Map batch processor stages to our stages
+                    if "transaction" in stage.lower():
+                        base = 60
+                        adjusted = min(70, base + int(percentage * 0.1))
+                        progress_tracker.set_progress(
+                            self.current_user_id,
+                            self.current_upload_id,
+                            "processing_batch",
+                            adjusted,
+                            stage
+                        )
+                    elif "embedding" in stage.lower():
+                        base = 80
+                        adjusted = min(90, base + int(percentage * 0.1))
+                        progress_tracker.set_progress(
+                            self.current_user_id,
+                            self.current_upload_id,
+                            "generating_embeddings",
+                            adjusted,
+                            stage
+                        )
+                
+                self.batch_processor = BatchProcessor(
+                    batch_size=500,
+                    max_workers=4,
+                    progress_callback=batch_progress_callback,
+                    db=self.db,
+                    vector_service=vector_service,
+                    upload_id=self.current_upload_id,
+                    user_id=self.current_user_id
+                )
             
-                logger.info("💾 Storing embeddings...")
-                success = self.batch_processor.store_embeddings_batch(chunks_data, embeddings) 
+            # process transactions
+            transaction_count = self.batch_processor.process_transactions_batch(
+                transactions_data, cancellation_check
+            )
+            
+            if cancellation_check is not None and cancellation_check():
+                logger.info("Processing cancelled after batch processing")
+                raise ProcessingCancelledError("Processing cancelled after batch processing")
+            
+            # stage 7 : creating chunks
+            self.set_progress(7, "Creating document chunks for search...")
+            try:
+                chunks_data = self.batch_processor.chunk_documents_parallel(
+                    df, document.id, cancellation_check=cancellation_check
+                )
+                
+                if not chunks_data:
+                    logger.warning("No chunks created from document")
+                    chunks_data = []
+                    
+                #if cancellation_check is not None and cancellation_check():
+                    #logger.info(f"Processing cancelled at stage during embeddings")
+                    #raise ProcessingCancelledError(f"Processing cancelled during embeddings")
+                
+                logger.info(f"Created {len(chunks_data)} chunks from document")
+            except Exception as e:
+                logger.error(f"Error during chunk creation: {e}")
+                chunks_data = []
+    
+            # stage 8-9 : Embeddings
+            if chunks_data:
+                # stage 8 : Generating embeddings
+                self.set_progress(8, f"Generating embeddings for {len(chunks_data)} chunks...")
+                
+                texts = [chunk['chunk_text'] for chunk in chunks_data]
+                embeddings = self.batch_processor.generate_embeddings_parallel(
+                    texts, batch_size=50, max_workers=2, cancellation_check=cancellation_check
+                )
+                
+                if cancellation_check is not None and cancellation_check():
+                    logger.info(f"Processing cancelled at stage during embeddings")
+                    raise ProcessingCancelledError(f"Processing cancelled during embeddings")
+                
+                # stage 9 : Storing embeddings
+                self.set_progress(9, "Storing embeddings in database...")
+                success = self.batch_processor.store_embeddings_parallel(
+                    self.db, chunks_data, embeddings, cancellation_check=cancellation_check
+                )
+                
                 if not success:
-                    logger.warning("⚠️ Failed to store some embeddings")
-
-            # update document status   
-            document.processed = True  
-            document.processed_at = datetime.now() 
-        
-            self.db.commit()   
-            logger.info("✅ Database commit successful")   
-
-            result = { 
+                    logger.warning("Some embeddings to store")
+                    
+            # stage 10 : Finalizing
+            self.set_progress(10, "Finalizing document processing...")
+                
+            # update document status
+            document.processed = True
+            document.processed_at = datetime.now()
+            document.transaction_count = transaction_count
+            self.db.commit()
+                
+            self.set_progress(12, f"Successfully processed {transaction_count} transactions")
+                
+            # cache metadata only
+            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            cache_key = f"doc:{user_id}:{file_size}"     
+            
+            self.cache.set('document_processing', cache_key, {
+                "status": "success",
                 "document_id": document.id,
                 "transaction_count": transaction_count,
-                "chunk_count": len(chunks_data),  
-                "status": "success",   
-                "processing_time": datetime.now().isoformat(), 
-                "batch_processed": True
-            }  
+                "chunk_count": len(chunks_data) if chunks_data else 0,
+                "processed_at": datetime.now().isoformat()
+            }, ttl=timedelta(hours=24))
+                
+            logger.info(f"Document processing completed: {transaction_count} transactions")
+                
+            return {
+                "document_id": document.id,
+                "transaction_count": transaction_count,
+                "chunk_count": len(chunks_data) if chunks_data else 0,
+                "status": "success",
+                "processing_time": datetime.now().isoformat()
+            }
         
-            # Cache the result 
-            self.cache.set('document_processing', cache_key, result)   
-            logger.info(f"✅ Document processing completed successfully for {filename}")   
-
-            return result  
+        except ProcessingCancelledError as e:
+            logger.info(f"Document processing cancelled: {e}")
+            raise
         
-        except Exception as e: 
-            # Ensure rollback on error 
-            self.db.rollback() 
-            logger.error(f"❌ Optimized document processing failed: {e}")  
-            logger.error(f"🔍 Stack trace: {traceback.format_exc()}")  
-            raise e    
+        except Exception as e:
+            error_msg = str(e)[:200]
+            logger.error(f"Document processing failed: {e}", exc_info=True)
+            
+            # update progress with error
+            if self.current_upload_id and self.current_user_id:
+                progress_tracker.set_progress(
+                    self.current_user_id,
+                    self.current_upload_id,
+                    "error",
+                    0,
+                    f"Processing failed: {error_msg}",
+                    {"error": error_msg, "error_type": type(e).__name__}
+                )
+            try:
+                self.db.rollback()
+            except:
+                pass
+            raise
     
-    def _prepare_transactions_batch(self, df: pd.DataFrame, user_id: int, document_id: int, column_mapping: dict) -> List[Dict]:
+    def store_extracted_transactions(self, extracted_data: List[Dict], db: Session, cancellation_check=None):
+        """Store extracted transactions with parallel processing"""
+        if not extracted_data:
+            return 
+        
+        # add cancellation point at start
+        if cancellation_check is not None and cancellation_check():
+            logger.info("Processing cancelled before storing extracted transactions")
+            raise Exception("Processing cancelled by user")
+        
+        batch_size = 100
+        batches = [extracted_data[i:i + batch_size] for i in range(0, len(extracted_data), batch_size)]
+        
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = []
+            for batch_idx ,batch in enumerate(batches):
+                if batch_idx % 5 == 0 and cancellation_check and cancellation_check():
+                    logger.info(f"Processing cancelled during extracted transaction storage at batch {batch_idx}")
+                    raise Exception("Processing cancelled by user")
+                
+                future = executor.submit(self.store_extracted_batch, db, batch, cancellation_check)
+                futures.append(future)
+                
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    if "cancelled" in str(e).lower():
+                        raise
+                    logger.warning(f"Extracted transaction batch failed: {e}")
+                        
+    def store_extracted_batch(self, db: Session, batch: List[Dict], cancellation_check=None):
+        """Store a batch of extracted transactions - uses a single IN() query for duplicate detection instead of one SELECT per record (N+1 fix)"""
+        
+        # cancellation point at the start
+        if cancellation_check is not None and cancellation_check():
+            logger.info("❌ Processing cancelled at start of extracted batch storage")
+            raise Exception("Processing cancelled by user")
+        
+        if not batch:
+            return
+        
+        # collect all raw_texts values from batch
+        batch_raw_texts = {r.get('raw_texts', '') for r in batch}
+        
+        # one IN() query to find which raw_texts already exist instead of using loop
+        try:
+            existing_rows = db.query(ExtractedTransactions.raw_text).filter(
+                ExtractedTransactions.raw_text.in_(batch_raw_texts)
+            ).all()
+            existing_texts = {row.raw_text for row in existing_rows}
+        except Exception as e:
+            logger.warning(f"Duplicate check query failed: {e} — inserting all records")
+            existing_texts = set()
+            
+        # optional cancellation check after query
+        if cancellation_check and cancellation_check():
+            logger.info("Processing cancelled after duplicate check")
+            raise Exception("Processing cancelled by user")
+        
+        # filter to only truly new records without DB
+        new_records = [r for r in batch if r.get('raw_text', '') not in existing_texts]
+        
+        if not new_records:
+            logger.debug(f"All {len(batch)} records in batch already exist — skipping")
+            return
+        
+        # bulk insert all new records in one statement
+        try:
+            db.bulk_insert_mappings(ExtractedTransactions, new_records)
+            db.commit()
+            logger.debug(f"Bulk inserted {len(new_records)} new extracted transactions " f"({len(batch) - len(new_records)} duplicates skipped)")
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"Bulk insert failed: {e}")
+            
+    def get_or_create_document(self, db: Session, user_id: int, filename: str, file_path: str) -> FinancialDocument:
+        """Get existing or create new document record"""
+        document = db.query(FinancialDocument).filter(
+            FinancialDocument.user_id == user_id,
+            FinancialDocument.filename == filename
+        ).order_by(FinancialDocument.id.desc()).first()
+        
+        if not document:
+            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            document = FinancialDocument(
+                user_id=user_id,
+                filename=filename,
+                file_path=file_path,
+                file_size=file_size,
+                processed=False
+            )
+            db.add(document)
+            db.commit()
+            db.refresh(document)
+        
+        return document    
+                    
+    def _prepare_transactions_batch(self, df: pd.DataFrame, user_id: int, document_id: int, column_mapping: dict, db: Session, cancellation_check=None) -> Tuple[List[Dict], List[Dict]]:
         """Prepare transaction data dictionaries for batch insertion along with extracted chunks to save"""
 
         transactions_data = []
@@ -681,9 +971,19 @@ class EnhancedDocumentService(DocumentService):
         amount_col = self._find_best_column_match(df.columns, column_mapping.get('amount', 'amount'))
         type_col = self._find_best_column_match(df.columns, column_mapping.get('type', 'type'))
         
+        # cancellation point at start
+        if cancellation_check is not None and cancellation_check():
+            logger.info(f"Processing cancelled at start of transaction preparation")
+            raise Exception("Process cancelled by user")
+        
         # Process each row
         for index, row in df.iterrows():
             try:
+                # periodic cancellation check every 10 rows
+                if index % 10 == 0 and cancellation_check and cancellation_check():
+                    logger.info(f"❌ Processing cancelled during row {index} preparation")
+                    raise Exception("Processing cancelled by user")
+                
                 # Skip if amount is empty
                 if pd.isna(row.get(amount_col)):
                     continue
@@ -706,7 +1006,7 @@ class EnhancedDocumentService(DocumentService):
 
                 transaction_type = self._determine_transaction_type(type_value, amount, description)
                 # Categorize transaction
-                category = categorize_transaction(description, self.db)
+                category = categorize_transaction(description, db)
 
                 # Ensure date is datetime object
                 if isinstance(date, pd.Timestamp):
@@ -724,17 +1024,22 @@ class EnhancedDocumentService(DocumentService):
                         print(f"⚠️ Row {index}: Could not format date, using current month")
                         date_obj = datetime.now()
                         month_str = date_obj.strftime('%Y-%m')
+                        
+                transaction_hash = hashlib.sha256(
+                    f"{user_id}:{date_obj.strftime('%Y-%m-%d')}:{description[:100]}:{amount:.2f}:{transaction_type}:{index}".encode()
+                ).hexdigest()
 
                 # create transaction dictionary (not an object ORM)
                 transaction_data = {
                     "document_id": document_id,
                     "user_id": user_id,
                     "date": date.to_pydatetime() if isinstance(date, pd.Timestamp) else date,
-                    "description": description[:255],  # Limit for database column
+                    "description": description[:255], 
                     "amount": float(amount),
                     "type": transaction_type,
                     "category": category,
                     "month": month_str,
+                    "transaction_hash": transaction_hash,
                     "created_at": datetime.now()
                 }
                 transactions_data.append(transaction_data)
@@ -751,7 +1056,8 @@ class EnhancedDocumentService(DocumentService):
                     "metadata": {
                         "row_index": index,
                         "column_mapping": column_mapping,
-                        "extraction_method": "document_processing"
+                        "extraction_method": "document_processing",
+                        "transaction_hash": transaction_hash
                     },
                     "year": date_obj.year,
                     "month": date_obj.month,
@@ -761,6 +1067,8 @@ class EnhancedDocumentService(DocumentService):
                 extracted_data.append(extracted_record)             
                 
             except Exception as e:
+                if "cancelled" in str(e).lower():
+                    raise
                 logger.info(f"⚠️ Skipping row {index} in batch preparation: {e}")
                 continue
                   
@@ -790,12 +1098,14 @@ class EnhancedDocumentService(DocumentService):
             amount = pd.to_numeric(amount_str, errors='coerce')
         
             if pd.isna(amount):
+                logger.info(f"⚠️ Amount parsing failed for raw value: {amount_raw}")
                 return float('nan')
         
             # Restore negative sign if needed
             if is_negative:
                 amount = -amount
         
+            logger.info(f"✅ Parsed amount: {amount}")
             return float(amount)
         except:
             return float('nan')

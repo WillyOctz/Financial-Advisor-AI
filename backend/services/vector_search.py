@@ -12,14 +12,38 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# pgvector 
+try:
+    from pgvector.sqlalchemy import Vector
+    from sqlalchemy import func as sql_func
+    PGVECTOR_AVAILABLE = True
+    logger.info("pgvector available — using indexed vector search")
+except ImportError:
+    PGVECTOR_AVAILABLE = False
+    logger.warning("pgvector is none or not installed.")
+
 class VectorSearchService:
+    model: Optional[SentenceTransformer] = None
+    model_name: Optional[str] = None
+    
+    @classmethod
+    def get_model(cls, model_name: str) -> SentenceTransformer:
+        """Return the cached model, loading it only on first call"""
+        if cls.model is None or cls.model_name != model_name:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            logger.info(f"Loading SentenceTransformer model: {model_name} on {device}")
+            cls.model = SentenceTransformer(model_name, device=device)
+            cls.model_name = model_name
+            logger.info(f"Model loaded. Embedding dim: {cls.model.get_sentence_embedding_dimension()}")
+        return cls.model
+    
     def __init__(self, db: Session, model_name: str = "all-MiniLM-L6-v2"):
         self.db = db
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
         # Load the model
         logger.info(f"Loading SentenceTransformer model: {model_name} on {self.device}")
-        self.model = SentenceTransformer(model_name, device=self.device)
+        self.model = self.get_model(model_name)
         
         # Model configuration
         self.embedding_dim = self.model.get_sentence_embedding_dimension()
@@ -94,57 +118,88 @@ class VectorSearchService:
 
     @cached(category='vector_search', ttl=get_ttl('vector_search'))
     def search_similar_transactions(self, query: str, user_id: int, top_k: int = 10, similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
-        """Search for similar document transactions through semantic search"""
+        """Search for similar document transactions through semantic search
+        Using pgvector, if failed fallback to load all chunks and computes through cosine similarity
+        """
         try:
-            # Generate the query embedding
             query_embedding = self.generate_embeddings([query])[0]
-            
-            # Get all chunks for user
-            chunks = self.db.query(DocumentChunk).join(
-                FinancialDocument, DocumentChunk.document_id == FinancialDocument.id
-            ).filter(
-                FinancialDocument.user_id == user_id,
-                DocumentChunk.chunk_text.isnot(None)
-            ).all()
-            
-            if not chunks:
+            if query_embedding is None:
                 return []
             
-            # Get or generate chunk embeddings
-            chunk_texts = [chunk.chunk_text for chunk in chunks]
-            chunk_embeddings = self.generate_embeddings(chunk_texts)
+            if PGVECTOR_AVAILABLE:
+                return self.search_with_pgvector(query_embedding, user_id, top_k, similarity_threshold)
             
-            # Calculate similarities
-            results = []
-            for chunk, embedding in zip(chunks, chunk_embeddings):
-                if embedding is None:
-                    continue
-                
-                similarity = self.cosine_similarity(query_embedding, embedding)
-                
-                if similarity >= similarity_threshold:
-                    results.append({
-                        "chunk_id": chunk.id,
-                        "similarity_score": float(similarity),
-                        "chunk_text": chunk.chunk_text[:300],
-                        "full_text": chunk.chunk_text,
-                        "metadata": chunk.chunk_metadata,
-                        "document_id": chunk.document_id,
-                        "transaction_date": chunk.chunk_metadata.get("date"),
-                        "amount": chunk.chunk_metadata.get("amount"),
-                        "category": chunk.chunk_metadata.get("category")
-                    })
-            # sort then return the top results
-            results.sort(key=lambda x: x['similarity_score'], reverse=True)
-            return results[:top_k]
-        
+            else:
+                return self.search_python_fallback(query_embedding, user_id, top_k, similarity_threshold)
+            
         except Exception as e:
             logger.error(f"Error in semantic search: {e}")
             return []
         
+    def search_with_pgvector(self, query_embeddings: List[float], user_id: int, top_k: int, similarity_threshold: float) -> List[Dict[str, Any]]:
+        """Indexed an search via pgvector"""
+        try:
+            distance_threshold = 1.0 - similarity_threshold
+            
+            chunks = (
+                self.db.query(DocumentChunk).join(FinancialDocument, DocumentChunk.document_id == FinancialDocument.id).filter(FinancialDocument.user_id == user_id, DocumentChunk.embeddings.isnot(None),).order_by(DocumentChunk.embedding.cosine_distance(query_embeddings)).limit(top_k).all()
+            )
+            
+            results = []
+            for chunk in chunks:
+                # cosine distance gives distance not similarity
+                distance = chunk.embedding.cosine_distance(query_embeddings)
+                similarity = 1.0 - float(distance)
+                
+                if similarity > similarity_threshold:
+                    results.append(self.chunk_to_result(chunk, similarity))
+                    
+            return results
+        
+        except Exception as e:
+            logger.warning(f"pgvector search failed, falling back to Python: {e}")
+            return self.search_python_fallback(query_embeddings, user_id, top_k, similarity_threshold)
+        
+    def search_python_fallback(self, query_embeddings: List[float], user_id: int, top_k: int, similarity_threshold: float) -> List[Dict[str, Any]]:
+        """Full table scan with cosine similarity method"""
+        chunks = (
+            self.db.query(DocumentChunk).join(FinancialDocument, DocumentChunk.document_id == FinancialDocument.id).filter(FinancialDocument.user_id == user_id, DocumentChunk.chunk_text.is_not(None)).all()
+        )
+        
+        if not chunks:
+            return []
+        
+        chunk_texts = [chunk.chunk_text for chunk in chunks]
+        chunk_embeddings = self.generate_embeddings(chunk_texts)
+        
+        results = []
+        for chunk, embedding in zip(chunks, chunk_embeddings):
+            if embedding is None:
+                continue
+            similarity = self.cosine_similarity(query_embeddings, embedding)
+            if similarity > similarity_threshold:
+                results.append(self.chunk_to_result(chunk, similarity))
+                
+        results.sort(key=lambda x:x["similarity_score"], reverse=True)
+        return results[:top_k]
+    
+    def chunk_to_result(self, chunk: DocumentChunk, similarity: float) -> Dict[str, Any]:
+        """Convert a DocumentChunk ORM object to a result dict"""
+        return {
+            "chunk_id": chunk.id,
+            "similarity_score": round(similarity, 4),
+            "chunk_text": chunk.chunk_text[:300],
+            "full_text": chunk.chunk_text,
+            "metadata": chunk.chunk_metadata,
+            "document_id": chunk.document_id,
+            "transaction_date": (chunk.chunk_metadata or {}).get("date"),
+            "amount": (chunk.chunk_metadata or {}).get("amount"),
+            "category": (chunk.chunk_metadata or {}).get("category"),
+        }
+               
     def cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
         """Calculate the cosine similarity between vectors"""
-        if not vec1 and vec2:
+        if not vec1 or not vec2:
             return 0.0
         
         # Ensure that both vector lengths are similar

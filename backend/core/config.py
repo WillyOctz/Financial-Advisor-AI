@@ -10,12 +10,14 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = ""
     HUGGINGFACE_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379"
+    REDIS_SSL: bool = False
 
     # CORS
-    ALLOWED_ORIGINS: list = ["http://localhost:8501", "http://127.0.0.1:8501", "http://localhost:3000", "http://127.0.0.1:3000"]
+    ALLOWED_ORIGINS: list = ["http://localhost:8501", "http://127.0.0.1:8501", "http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000", "http://127.0.0.1:8000"]
 
     # Embedding Model
     QDRANT_URL: str = "http://localhost:6333"
@@ -23,6 +25,7 @@ class Settings(BaseSettings):
 
     # JWT Secret 
     JWT_SECRET: str = ""
+    TWO_FACTOR_ENCRYPTION_KEY: str = ""
 
     # App 
     APP_NAME: str = "AI Financial Advisor"
@@ -40,6 +43,14 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = ""
     SUPABASE_ANON_KEY: str = ""
     SUPABASE_SERVICE_KEY: str = ""
+    
+    # Progress tracking settings
+    PROGRESS_TTL_HOURS: int = 2 
+    SSE_HEARTBEAT_INTERVAL: int = 10  
+    SSE_CONNECTION_TIMEOUT: int = 600
+    
+    # Sentry
+    SENTRY_DSN: str = ""
 
     class Config:
         env_file = ".env"

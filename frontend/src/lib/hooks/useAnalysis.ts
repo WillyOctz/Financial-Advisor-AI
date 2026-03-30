@@ -7,7 +7,6 @@ import {
   RiskAssessment,
 } from "@/types/financial";
 import { useState, useCallback } from "react";
-import { analysisApi } from "../api/analysis";
 import { apiClient } from "../api/client";
 
 interface UseAnalysisResult {

@@ -61,7 +61,7 @@ def get_ai_advice(
             financial_health_score=summary.get('financial_health_score'),
             key_metrics={
                 'savings_rate': summary.get('savings_rate'),
-                'expense_to_income_ratio': (summary['total_expenses'] / summary['total_income'] * 10)
+                'expense_to_income_ratio': (summary['total_expenses'] / summary['total_income'] * 100)
                     if summary['total_income'] > 0 else 0,
                 'essential_spending_ratio': (summary.get('essential_spending', 0) / summary['total_expenses'] * 100)
                     if summary['total_expenses'] > 0 else 0

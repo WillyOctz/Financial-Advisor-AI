@@ -7,11 +7,15 @@ python-dotenv
 prophet  # For forecasting
 google-generativeai
 scikit-learn # For predictive analysis
+sentry-sdk
+
+psutil # for system utilator
 
 # FastAPI and server
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 python-multipart==0.0.6
+slowapi
 
 # Database
 sqlalchemy==2.0.25
@@ -44,10 +48,10 @@ anthropic==0.8.1
 # No additional packages needed - pgvector is a PostgreSQL extension
 
 # Embeddings
-sentence-transformers==2.2.2
-huggingface-hub==0.16.4
-torch==2.0.1
-transformers==4.30.2
+sentence-transformers==3.1.1
+huggingface-hub==0.24.6
+torch==2.4.1
+transformers==4.44.2
 
 # Task Queue
 celery==5.3.4

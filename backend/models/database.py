@@ -3,6 +3,14 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 import enum
 
+# pgvector
+try:
+    from pgvector.sqlalchemy import Vector
+    PGVECTOR_AVAILABLE = True
+except ImportError:
+    Vector = None
+    PGVECTOR_AVAILABLE = False
+
 Base = declarative_base()
 
 class TransactionType(enum.Enum):
@@ -15,15 +23,24 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
+    two_factor_enabled = Column(Boolean, default=False)
+    two_factor_secret = Column(String(255), nullable=True)
+    two_factor_backup_codes = Column(JSON, nullable=True)
+    two_factor_method = Column(String(20), default='app') # can be change to sms, email or app
+    phone_number = Column(String(20), nullable=True)
     first_name = Column(String(100))
     last_name = Column(String(100))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_login = Column(DateTime(timezone=True), nullable=True)
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
     verification_token = Column(String(255), nullable=True)
     verification_token_expires = Column(DateTime(timezone=True), nullable=True)
     reset_token = Column(String(255), nullable=True)
     reset_token_expires = Column(DateTime(timezone=True), nullable=True)
+    
+    # user preferences
+    language = Column(String(10), default='en', nullable=False, server_default='en')
 
 class FinancialDocument(Base):
     __tablename__ = "financial_documents"
@@ -39,6 +56,11 @@ class FinancialDocument(Base):
     processed = Column(Boolean, default=False)
     processed_at = Column(DateTime(timezone=True), nullable=True)
     transaction_count = Column(Integer, default=0)
+    
+    __table_args__ = (
+        Index('idx_documents_user_processed', 'user_id', 'processed', 'uploaded_at'),
+        Index('idx_documents_filename_user', 'filename', 'user_id'),
+    )
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -52,10 +74,20 @@ class Transaction(Base):
     type = Column(Enum(TransactionType), nullable=False)
     category = Column(String(100))
     month = Column(String(7))
+    transaction_hash = Column(String(64), unique=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     is_archived = Column(Boolean, default=False)
     archived_at = Column(DateTime(timezone=True), nullable=True)  
+    
+    __table_args__ = (
+        Index('idx_transactions_user_date_type', 'user_id', 'date', 'type'),
+        Index('idx_transactions_user_month', 'user_id', 'month'),
+        Index('idx_transactions_date_amount', 'date', 'amount'),
+        Index('idx_transactions_category_user', 'category', 'user_id'),
+        Index('idx_transactions_document_user', 'document_id', 'user_id'),
+        Index('idx_transactions_amount_type', 'amount', 'type')
+    )
     
 class ExtractedTransactions(Base):
     """Store the processed transactions from document extraction"""
@@ -112,8 +144,14 @@ class DocumentChunk(Base):
     chunk_text = Column(Text, nullable=False)
     chunk_index = Column(Integer, nullable=False)
     embeddings = Column(JSON) # Store vector embeddings
+    embedding = Column(Vector(384) if PGVECTOR_AVAILABLE else JSON, nullable=True) # using 384-dim vector, can be changed 768-dim with different model
     chunk_metadata = Column(JSON) # Store additional metadata
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    __table_args__ = (
+        Index('idx_chunks_document_index', 'document_id', 'chunk_index'),
+        Index('idx_chunks_created_document', 'created_at', 'document_id')
+    )
 
 class FinancialInsight(Base):
     __tablename__ = "financial_insights"

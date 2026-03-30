@@ -26,6 +26,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     window.location.href = "/login";
   };
 
+  const handleSettings = () => {
+    window.location.href = "/settings"
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -111,11 +115,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {/*<DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleSettings}>
                   <Settings className="mr-2 h-4 w-4" />
                   <span>Settings</span>
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />*/}
+                <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout}>
                     <LogOut className="mr-2 h-4 w-4" />
                     <span>Log Out</span>

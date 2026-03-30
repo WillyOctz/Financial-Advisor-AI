@@ -1,6 +1,7 @@
 import os
 from typing import Optional
-import smtplib
+import aiosmtplib
+import asyncio
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from jinja2 import Template
@@ -12,6 +13,9 @@ load_dotenv()
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 2
 
 class EmailService:
     def __init__(self):
@@ -28,156 +32,148 @@ class EmailService:
             template_content =  file.read()
         return Template(template_content)
     
-    def send_verification_email(self, to_email: str, token: str, username: str) -> bool:
+    async def send_email(self, msg: MIMEMultipart) -> bool:
+        """Core async send helper with retry logic. Uses aiosmtplib so the event loop is never blocked"""
+        if not self.smtp_username or not self.smtp_password:
+            logger.error("SMTP credentials not configured — set SMTP_USERNAME and SMTP_PASSWORD in .env")
+            return False
+        
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+              await aiosmtplib.send(
+                  msg,
+                  hostname=self.smtp_server,
+                  port=self.smtp_port,
+                  username=self.smtp_username,
+                  password=self.smtp_password,
+                  start_tls=True,
+                  timeout=10,
+                )  
+              return True
+          
+            except aiosmtplib.SMTPException as e:
+                wait = RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                if attempt < MAX_RETRIES:
+                    logger.warning(
+                        f"SMTP send failed (attempt {attempt}/{MAX_RETRIES}), "
+                        f"retrying in {wait}s: {e}"
+                    )
+                    await asyncio.sleep(wait)
+                else:
+                    logger.error(
+                        f"SMTP send failed after {MAX_RETRIES} attempts "
+                        f"to {msg['To']}: {e}"
+                    )
+                    return False
+                
+            except Exception as e:
+                logger.error(f"Unexpected email error to {msg['To']}: {e}")
+                return False
+            
+        return False
+    
+    async def send_verification_email(self, to_email: str, token: str, username: str) -> bool:
         """Send account verification email"""
         try:
-            # Load template
             template = self._load_template("verification_email")
-
-            # Prepare verificaiton link
             verification_link = f"{self.base_url}/verify-email?token={token}"
-
-            # Render template
+            
             html_content = template.render(
                 username=username,
                 verification_link=verification_link,
-                base_url=self.base_url
+                base_url=self.base_url,
             )
-
-            # Create message
+            text_content = (
+                f"Welcome to Financial Advisor AI!\n\n"
+                f"Please verify your email address:\n{verification_link}\n\n"
+                f"This link expires in 24 hours.\n"
+                f"If you didn't create an account, ignore this email."
+            )
+            
             msg = MIMEMultipart("alternative")
             msg["Subject"] = "Verify your Financial Advisor AI Account"
             msg["From"] = f"Financial Advisor AI <{self.smtp_username}>"
             msg["To"] = to_email
-
-            # Plain text version
-            text_content = f"""
-            Welcome to Financial Advisor AI!
-            
-            Please verify your email address by clicking the link below:
-            {verification_link}
-            
-            This link will expire in 24 hours.
-            
-            If you didn't create an account, please ignore this email.
-
-            """
-            # Attach both plain text and HTML
             msg.attach(MIMEText(text_content, "plain"))
             msg.attach(MIMEText(html_content, "html"))
-
-            # Send email
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.starttls()
-                server.login(self.smtp_username, self.smtp_password)
-                server.send_message(msg)
-
-            logger.info(f"Verification email sent to {to_email}")
-            return True
+            
+            success = await self.send_email(msg)
+            if success:
+                logger.info(f"Verification email sent to {to_email}")
+            return success
         
+        except FileNotFoundError as e:
+            logger.error(f"Missing email template: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Failed to send verification email to {to_email}: {e}")
+            logger.error(f"Failed to build verification email for {to_email}: {e}")
             return False
         
-    def send_welcome_email(self, to_email: str, username: str) -> bool:
+    async def send_welcome_email(self, to_email: str, username: str) -> bool:
         """Send welcome email after successful verification"""
         try:
             template = self._load_template("welcome_email")
-
-            html_content = template.render(
-                username=username,
-                base_url=self.base_url
+            html_content = template.render(username=username, base_url=self.base_url)
+            text_content = (
+                f"Welcome to Financial Advisor AI, {username}!\n\n"
+                f"Your account has been successfully verified.\n"
+                f"You can now log in and start using our AI-powered financial insights.\n\n"
+                f"Best regards,\nThe Financial Advisor AI Team"
             )
-
+            
             msg = MIMEMultipart("alternative")
             msg["Subject"] = "Welcome to Financial Advisor AI!"
             msg["From"] = f"Financial Advisor AI <{self.smtp_username}>"
             msg["To"] = to_email
-
-            text_content = f"""
-            Welcome to Financial Advisor AI, {username}!
-            
-            Your account has been successfully verified.
-            You can now log in and start using our AI-powered financial insights.
-            
-            Get started by uploading your financial documents or exploring the dashboard.
-            
-            Best regards,
-            The Financial Advisor AI Team
-        
-            """
-
             msg.attach(MIMEText(text_content, "plain"))
             msg.attach(MIMEText(html_content, "html"))
-
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.starttls()
-                server.login(self.smtp_username, self.smtp_password)
-                server.send_message(msg)
-
-            logger.info(f"Welcome email sent to {to_email}")
-            return True
+            
+            success = await self.send_email(msg)
+            if success:
+                logger.info(f"Welcome email sent to {to_email}")
+            return success
         
+        except FileNotFoundError as e:
+            logger.error(f"Missing email template: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Failed to send welcome email: {e}")
+            logger.error(f"Failed to build welcome email for {to_email}: {e}")
             return False
         
-    def send_password_reset_email(self, to_email: str, token: str, username: str) -> bool:
+    async def send_password_reset_email(self, to_email: str, token: str, username: str) -> bool:
         """Send password reset email"""
         try:
-            # Load the email template
-            template_path = Path(__file__).parent / "templates" / "forget_password.html"
-            with open(template_path, 'r', encoding='utf-8') as file:
-                template_content = file.read()
-
-            template = Template(template_content)
-
-            # Prepare reset link
+            template = self._load_template("forget_password")
             reset_link = f"{self.base_url}/reset-password?token={token}"
-
-            # Render template
+ 
             html_content = template.render(
                 username=username,
                 reset_link=reset_link,
-                base_url=self.base_url
+                base_url=self.base_url,
             )
-
-            # Create message
+            text_content = (
+                f"Password Reset Request\n\nHello {username},\n\n"
+                f"Click the link below to set a new password:\n{reset_link}\n\n"
+                f"This link expires in 1 hour.\n"
+                f"If you didn't request this, ignore this email.\n\n"
+                f"Best regards,\nThe Financial Advisor AI Team"
+            )
+ 
             msg = MIMEMultipart("alternative")
             msg["Subject"] = "Reset Your Financial Advisor AI Password"
             msg["From"] = f"Financial Advisor AI <{self.smtp_username}>"
             msg["To"] = to_email
-
-            # Plain text version
-            text_content = f"""
-            Password Reset Request
-
-            Hello {username},
-
-            We received a request to reset your password. Click the link below to set a new password:
-            {reset_link}
-            
-            This link will expire in 1 hour.
-            
-            If you didn't request a password reset, please ignore this email. Your password will remain unchanged.
-            
-            Best regards,
-            The Financial Advisor AI Team
-            """
-
-            # Attach both plain text and HTML
             msg.attach(MIMEText(text_content, "plain"))
             msg.attach(MIMEText(html_content, "html"))
-
-            # Send Email
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.starttls()
-                server.login(self.smtp_username, self.smtp_password)
-                server.send_message(msg)
-
-            logger.info(f"Password reset email sent to {to_email}")
-            return True
-        
+ 
+            success = await self.send_email(msg)
+            if success:
+                logger.info(f"Password reset email sent to {to_email}")
+            return success
+ 
+        except FileNotFoundError as e:
+            logger.error(f"Missing email template: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Failed to send password reset email to {to_email}: {e}")
+            logger.error(f"Failed to build password reset email for {to_email}: {e}")
             return False

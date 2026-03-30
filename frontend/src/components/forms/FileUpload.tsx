@@ -7,13 +7,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Upload, FileText, X } from "lucide-react";
 
 interface FileUploadProps {
-  onFileSelect: (file: File) => void;
+  onFileSelect: (files: File[]) => void;
+  onCancel?: () => void;
+  isUploading?: boolean;
   acceptedTypes?: string[];
   maxSize?: number;
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({
   onFileSelect,
+  onCancel,
+  isUploading = false,
   acceptedTypes = [".csv", ".xlsx", ".xls"],
   maxSize = 10 * 1024 * 1024,
 }) => {
@@ -22,12 +26,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       if (acceptedFiles.length > 0) {
-        const file = acceptedFiles[0];
-        setSelectedFile(file);
-        onFileSelect(file);
+        setSelectedFile(acceptedFiles[0]);
+        onFileSelect(acceptedFiles);
       }
     },
-    [onFileSelect]
+    [onFileSelect, onFileSelect],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -40,7 +43,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
       ],
     },
     maxSize,
-    multiple: false,
+    multiple: true,
   });
 
   const removeFile = () => {
@@ -51,6 +54,19 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     <Card>
       <CardHeader>
         <CardTitle>Upload Financial Data</CardTitle>
+        {isUploading && onCancel && (
+          <div className="absolute right-4 top-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onCancel}
+              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+            >
+              <X className="w-4 h-4 mr-1" />
+              Cancel Upload
+            </Button>
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         {!selectedFile ? (

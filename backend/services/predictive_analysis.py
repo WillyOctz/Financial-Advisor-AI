@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, List, Any, Tuple, Optional
 from datetime import datetime, timedelta
 import logging
+import joblib, hashlib
 from backend.models.database import Transaction
 from backend.services.forecasting_services import ForecastingService
 from scipy import stats
@@ -133,8 +134,15 @@ class PredictiveAnalysisService:
     
     def isolation_forest_detection(self, features: pd.DataFrame, contamination: float = 0.1) -> pd.Series:
         """Use isolation forest for anomaly detection"""
-        
         try:
+            data_hash = hashlib.md5(pd.util.hash_pandas_object(features).values).hexdigest()[:8]
+            cache_key = f"iso_forest_{data_hash}"
+            
+            # check redis cache for already trained model
+            cached_predictions = self.cache.get('anomaly', cache_key) if hasattr(self, 'cache') else None
+            if cached_predictions:
+                return pd.Series(cached_predictions)
+            
             # scale features
             scaler = StandardScaler()
             scaled_features = scaler.fit_transform(features)
@@ -148,8 +156,12 @@ class PredictiveAnalysisService:
             
             predictions = iso_forest.fit_predict(scaled_features)
             
+            # cache the result
+            if hasattr(self, 'cache'):
+                self.cache.set('anomaly', cache_key, predictions.tolist())
+            
             # convert the anomaly scores to only have 1: normal and -1: anomaly
-            return (predictions == -1).astype(int)
+            return pd.Series(predictions == -1, index=features.index)
         
         except Exception as e:
             logger.error(f"Isolation Forest failed: {e}")

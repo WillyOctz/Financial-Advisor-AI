@@ -1,7 +1,8 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, validator
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from enum import Enum
+import json
 
 class TransactionType(str, Enum):
     INCOME = "INCOME"
@@ -269,3 +270,78 @@ class ExtractedChunkResponse(BaseModel):
     
 class ArchiveExtractedChunksRequest(BaseModel):
     year: int
+    
+class TwoFactorEnableRequest(BaseModel):
+    method: str = "app" # can be change to sms, email or app
+    phone_number: Optional[str] = None
+    
+class TwoFactorVerifyRequest(BaseModel):
+    partial_token: str
+    code: Optional[str] = None
+    backup_code: Optional[str] = None
+    
+class TwoFactorSetupResponse(BaseModel):
+    qr_code_url: str
+    secret: str
+    backup_codes: List[str]
+    method: str
+    
+class TwoFactorDisableRequest(BaseModel):
+    password: str
+    
+class MultiUploadFormData(BaseModel):
+    """Schema for multi part upload documents"""
+    user_id: int
+    column_mappings_json: str
+    priority: str = "medium"
+    dependencies_json: str = "[]"
+    
+    @validator('column_mappings_json')
+    def validate_column_mappings(cls, v):
+        try:
+            data = json.loads(v)
+            if not isinstance(data, list):
+                raise ValueError("column_mappings must be a JSON array")
+            return v
+        except json.JSONDecodeError:
+            raise ValueError("Invalid JSON in column_mappings")
+        
+    @validator('dependencies_json')
+    def validate_dependencies(cls, v):
+        try:
+            data = json.loads(v)
+            if not isinstance(data, list):
+                raise ValueError("dependencies must be a JSON array")
+            return v
+        except json.JSONDecodeError:
+            raise ValueError("Invalid JSON in dependencies")
+        
+    @property
+    def column_mappings(self) -> List[dict]:
+        return json.loads(self.column_mappings_json)
+    
+    @property
+    def dependencies(self) -> List[dict]:
+        return json.loads(self.dependencies_json)
+    
+class MultiUploadResponse(BaseModel):
+    """Response schema for multipart uploads"""
+    message: str
+    task_ids: List[str]
+    upload_ids: List[str]
+    priority: str
+    dependencies_set: bool
+    estimated_concurrent_processing: int
+    
+class UserPreferencesUpdate(BaseModel):
+    """Fields the user can update from the settings page"""
+    language: Optional[str] = None
+    
+class UserPreferencesResponse(BaseModel):
+    """Current preference state returned to the frontend"""
+    language: str
+    two_factor_enabled: bool
+    two_factor_method: Optional[str] = None
+    
+    class Config:
+        from_attributes = True

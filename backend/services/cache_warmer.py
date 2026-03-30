@@ -196,7 +196,7 @@ class CacheWarmer:
             display_service = DisplayService(self.db)
 
             # Generate and cache default
-            advice = display_service.generate_ai_advice(self.db)
+            advice = display_service.generate_ai_advice(user_id)
 
             cache.set(
                 'ai_advice',
@@ -208,7 +208,7 @@ class CacheWarmer:
             logger.debug(f"✅ Warmed AI advice for user {user_id}")
 
         except Exception as e:
-            logger.debug(f"ℹ️ AI advice warming skipped: {e}")
+            logger.debug(f"ℹ️ AI advice warming skipped for user {user_id}: {e}")
 
     def _warm_all_users(self, user_ids: List[int]):
         """Warm cache for all active users with rate limiting"""

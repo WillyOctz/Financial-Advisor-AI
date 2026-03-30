@@ -52,55 +52,77 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
           const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
           if (jsonData.length > 0) {
-            headers = jsonData[0] as string[];
+            // Get the first row which should be headers
+            const firstRow = jsonData[0] as any[];
+            
+            // Safely process headers
+            headers = firstRow
+              .filter((cell) => {
+                // Filter out null, undefined, and empty values
+                return cell !== null && 
+                       cell !== undefined && 
+                       cell !== "" && 
+                       !(typeof cell === "number" && isNaN(cell));
+              })
+              .map((cell) => {
+                // Convert to string safely
+                if (cell === null || cell === undefined) return "";
+                return String(cell).trim();
+              })
+              .filter(header => header.length > 0); // Remove empty strings
           }
         } else {
           console.error("❌ Unsupported file type:", file.name);
           alert(
-            `Unsupported file type: ${file.name}. Please upload CSV or Excel files.`
+            `Unsupported file type: ${file.name}. Please upload CSV or Excel files.`,
           );
           return;
         }
 
+        // Log for debugging
+        
         setColumns(headers);
 
-        // Auto detect common column names
+        // Auto detect common column names with safety checks
         const autoMapping: ColumnMappingType = {
           date:
             headers.find(
-              (h) =>
+              (h) => h && (
                 h.toLowerCase().includes("date") ||
-                h.toLowerCase().includes("transaction date") ||
-                h.toLowerCase().includes("date")
+                h.toLowerCase().includes("transaction date")
+              )
             ) || (headers.length > 0 ? headers[0] : ""),
 
           description:
             headers.find(
-              (h) =>
+              (h) => h && (
                 h.toLowerCase().includes("desc") ||
                 h.toLowerCase().includes("description") ||
                 h.toLowerCase().includes("transaction") ||
                 h.toLowerCase().includes("details")
+              )
             ) || (headers.length > 1 ? headers[1] : ""),
 
           amount:
             headers.find(
-              (h) =>
+              (h) => h && (
                 h.toLowerCase().includes("amount") ||
                 h.toLowerCase().includes("amt") ||
                 h.toLowerCase().includes("value") ||
                 h.toLowerCase().includes("price") ||
                 h.toLowerCase().includes("total")
+              )
             ) || (headers.length > 2 ? headers[2] : ""),
 
           type:
             headers.find(
-              (h) =>
+              (h) => h && (
                 h.toLowerCase().includes("type") ||
                 h.toLowerCase().includes("category") ||
                 h.toLowerCase().includes("transaction type") ||
                 h.toLowerCase().includes("income/expense")
-            ) || (headers.length > 1 ? headers[3] : ""),
+              )
+            ) || (headers.length > 3 ? headers[3] : ""),
         };
 
         setMapping(autoMapping);
@@ -109,7 +131,7 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
         alert(
           `Error reading file: ${
             error instanceof Error ? error.message : "Unknown error"
-          }`
+          }`,
         );
       } finally {
         setIsLoading(false);
@@ -121,7 +143,7 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
 
   const handleMappingChange = (
     field: keyof ColumnMappingType,
-    value: string
+    value: string,
   ) => {
     setMapping((prev) => ({ ...prev, [field]: value }));
   };
@@ -135,9 +157,9 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
     return (
       <Card>
         <CardContent className="p-8 text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto">
-            <p className="mt-4 text-gray-600">Reading file: {file.name}</p>
-            <p className="text-sm text-gray-500">Detecting Columns...</p>
+          <div className="flex flex-col items-center justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Reading file: {file.name}...</p>
           </div>
         </CardContent>
       </Card>
@@ -165,7 +187,7 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
             </svg>
           </div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">
-            Could not read file
+            Could not read file headers
           </h3>
           <p className="text-gray-600">
             Please ensure the file has a header row and is in CSV or Excel
@@ -206,8 +228,8 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
                 required
               >
                 <option value="">Select Column</option>
-                {columns.map((column) => (
-                  <option key={column} value={column}>
+                {columns.map((column, index) => (
+                  <option key={`date-${index}-${column}`} value={column}>
                     {column}
                   </option>
                 ))}
@@ -227,8 +249,8 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
                 required
               >
                 <option value="">Select column</option>
-                {columns.map((column) => (
-                  <option key={column} value={column}>
+                {columns.map((column, index) => (
+                  <option key={`desc-${index}-${column}`} value={column}>
                     {column}
                   </option>
                 ))}
@@ -246,8 +268,8 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
                 required
               >
                 <option value="">Select column</option>
-                {columns.map((column) => (
-                  <option key={column} value={column}>
+                {columns.map((column, index) => (
+                  <option key={`amount-${index}-${column}`} value={column}>
                     {column}
                   </option>
                 ))}
@@ -265,8 +287,8 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
                 required
               >
                 <option value="">Select column</option>
-                {columns.map((column) => (
-                  <option key={column} value={column}>
+                {columns.map((column, index) => (
+                  <option key={`type-${index}-${column}`} value={column}>
                     {column}
                   </option>
                 ))}
