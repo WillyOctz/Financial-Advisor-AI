@@ -14,4 +14,18 @@ Financial Advisor AI is a full-stack application designed to help users:
 
 This project combines data processing, machine learning, and LLM-based advisory into a single platform.
 
+## Key Features
+
+- Document ingestion & processing (CSV, Excel)
+- Financial analytics (income, expenses, savings, health score)
+- Forecasting & predictive analysis
+- AI financial advisor (LLM-powered)
+- Caching & performance optimization (Redis)
+- Authentication (JWT-based)
+- Cloud storage integration (Supabase)
+- Scalable backend with batch processing
+
+## Tech Stack
+
+# Backend
 
