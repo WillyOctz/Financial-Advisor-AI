@@ -13,6 +13,11 @@ from dotenv import load_dotenv
 import uuid
 from cryptography.fernet import Fernet, InvalidToken 
 
+# import new services
+from backend.services.otp_services import OTPService
+from backend.services.sms_services import SMSService
+from backend.services.email_service import EmailService
+
 #======2FA Library Imports======
 import pyotp
 import qrcode
@@ -31,6 +36,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 VERIFICATION_TOKEN_EXPIRE_HOURS = 24
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+
+
 # 2FA secret encrption
 raw_2fa_key = os.getenv("TWO_FACTOR_ENCRYPTION_KEY")
 if not raw_2fa_key:
@@ -51,6 +58,9 @@ def decrypt_2fa_secret(encrypted_secret: str) -> str:
 class AuthService:
     def __init__(self, db: Session):
         self.db = db
+        self.otp_service = OTPService()
+        self.sms_service = SMSService()
+        self.email_service = EmailService()
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         return pwd_context.verify(plain_password, hashed_password)
@@ -93,7 +103,7 @@ class AuthService:
             "exp": expire,
             "iat": datetime.utcnow(),
             "type": "access_token",
-            "jti": str(uuid.uuid4)
+            "jti": str(uuid.uuid4())
         })
         
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
@@ -213,6 +223,8 @@ class AuthService:
 
         return user
     
+    # ======TOTP-based service 2FA======
+    
     def generate_two_factor_secret(self, user_email: str) -> str:
         """Generate TOTP secret for 2fa"""
         return pyotp.random_base32()
@@ -258,39 +270,144 @@ class AuthService:
             
         return False
     
+    # ======OTP based 2FA (Email/SMS)======
+    
+    async def send_2fa_otp(self, user: User, purpose: str = "2fa_login") -> bool:
+        """Send OTP code based on user's preferred 2FA method
+        
+        Args:
+            user: User object
+            purpose: Either '2fa_setup' or '2fa_login' to differentiate setup from actual login
+        """
+        # For setup flow, skip rate limiting to allow immediate resends
+        skip_rate_limit = (purpose == "2fa_setup")
+        
+        # Generate OTP
+        otp_code, expiry = self.otp_service.create_otp(
+            user.id, 
+            purpose=purpose,
+            skip_rate_limit=skip_rate_limit
+        )
+        
+        if not otp_code:
+            return False
+        
+        username = f"{user.first_name} {user.last_name}" if user.first_name else user.email
+        
+        # send via email
+        if user.two_factor_method == "email":
+            success = await self.email_service.send_otp_email(
+                to_email=user.email,
+                otp_code=otp_code,
+                username=username
+            )
+            return success
+        
+        # send via SMS
+        elif user.two_factor_method == "sms":
+            if not user.phone_number:
+                return False
+            
+            success = await self.sms_service.send_otp_sms(
+                to_phone=user.phone_number,
+                otp_code=otp_code
+            )
+            return success
+        
+        return False
+    
+    def verify_2fa_otp(self, user: User, otp_code: str, purpose: str = "2fa_login") -> bool:
+        """Verify OTP code for email/SMS 2FA methods
+        
+        Args:
+            user: User object
+            otp_code: The OTP code to verify
+            purpose: Either '2fa_setup' or '2fa_login' to match the purpose used in send_2fa_otp
+        """
+        return self.otp_service.verify_otp(user.id, otp_code, purpose=purpose)
+    
+    # ======2FA Setup======
+    
     def enable_two_factor(self, user: User, method: str = 'app', phone_number: str = None) -> dict:
-        """Enable 2fa for user"""
-        secret = self.generate_two_factor_secret(user.email)
-        qr_code_url = self.generate_two_factor_qr_code(user.email, secret)
-        backup_codes = self.generate_backup_codes()
+        """Enable 2fa for user with specified method"""
+        result = {}
         
-        user.two_factor_secret = secret
+        # for app-based 2FA, generate secret and QR code
+        if method == 'app':
+            secret = self.generate_two_factor_secret(user.email)
+            qr_code_url = self.generate_two_factor_qr_code(user.email, secret)
+            backup_codes = self.generate_backup_codes()
+            
+            # encrypt and store secret
+            user.two_factor_secret = encrypt_2fa_secret(secret)
+            
+            result = {
+                'qr_code_url': qr_code_url,
+                'secret': secret,
+                'backup_codes': backup_codes,
+                'method': method
+            }
+            
+        # for email-based 2FA 
+        elif method == 'email':
+            backup_codes = self.generate_backup_codes()
+            result = {
+                'backup_codes': backup_codes,
+                'method': method,
+                'message': 'Email 2FA enabled. You will receive OTP codes via email.'
+            }
+            
+        # for sms-based 2FA
+        elif method == 'sms':
+            if not phone_number:
+                raise ValueError("Phone number required for SMS 2FA")
+            
+            # format phone number to E.164
+            formatted_phone = self.sms_service.format_phone_number(phone_number)
+            user.phone_number = formatted_phone
+            
+            backup_codes = self.generate_backup_codes()
+            result = {
+                'backup_codes': backup_codes,
+                'method': method,
+                'phone_number': formatted_phone,
+                'message': 'SMS 2FA enabled. You will receive OTP codes via text message.'
+            }
+            
+        # update user settings
         user.two_factor_method = method
-        user.two_factor_enabled = False # automatically enabled after verification
-        user.phone_number = phone_number if method == 'sms' else None
+        user.two_factor_enabled = False
         
-        # Store backup codes as objects with usage status
-        backup_codes_objects = [{'code': code, 'used': False} for code in backup_codes]
+        # store backup codes
+        backup_codes_objects = [{'code': code, 'used': False} for code in result.get('backup_codes', [])]
         user.two_factor_backup_codes = backup_codes_objects
         
         self.db.commit()
         
-        return {
-            'qr_code_url': qr_code_url,
-            'secret': secret,
-            'backup_codes': backup_codes,
-            'method': method
-        }
+        return result
         
-    def verify_and_enable_two_factor(self, user: User, code: str) -> bool:
+    async def verify_and_enable_two_factor(self, user: User, code: str) -> bool:
         """Verify initial 2FA setup code and enable 2FA"""
-        if not user.two_factor_secret:
-            return False
-        
-        if self.verify_two_factor_code(user.two_factor_secret, code):
-            user.two_factor_enabled = True
-            self.db.commit()
-            return True
+        if user.two_factor_method == 'app':
+            if not user.two_factor_secret:
+                return False
+            
+            # decrypt secret
+            decrypted_secret = decrypt_2fa_secret(user.two_factor_secret)
+            
+            if self.verify_two_factor_code(decrypted_secret, code):
+                user.two_factor_enabled = True
+                self.db.commit()
+                return True
+            
+        # for email/sms send otp code first
+        elif user.two_factor_method in ['email', 'sms']:
+            # Use '2fa_setup' purpose to match what was sent during setup
+            if self.verify_2fa_otp(user, code, purpose="2fa_setup"):
+                user.two_factor_enabled = True
+                self.db.commit()
+                return True
+            
         return False
     
     def disable_two_factor(self, user: User, password: str) -> bool:
@@ -302,5 +419,6 @@ class AuthService:
         user.two_factor_secret = None
         user.two_factor_backup_codes = None
         user.two_factor_method = None
+        user.phone_number = None
         self.db.commit()
         return True

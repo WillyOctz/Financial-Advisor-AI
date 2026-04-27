@@ -1,12 +1,10 @@
 "use client";
 
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { motion } from "framer-motion";
 import { useAnalysis } from "@/lib/hooks/useAnalysis";
 import { useUser } from "@/lib/hooks/useUser";
 import { AdviceGenerator } from "@/components/forms/AdviceGenerator";
-import { Button } from "@/components/ui/button";
-import React, { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 
 export default function AIAdvicePage() {
@@ -24,8 +22,8 @@ export default function AIAdvicePage() {
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <div className="">
-          {/* AI Advice Section (this need to be changed) */}
+        <motion.div className="mt-1">
+          {/* AI Advice Section */}
           <AdviceGenerator
             onGenerateAdvice={handleGenerateAdvice}
             advice={advice}
@@ -34,7 +32,7 @@ export default function AIAdvicePage() {
             userId={userId}
             financialHealthScore={summary?.financial_health_score}
           />
-        </div>
+        </motion.div>
       </DashboardLayout>
     </ProtectedRoute>
   );

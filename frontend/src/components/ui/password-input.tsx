@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useState } from "react";
+import { motion, AnimatePresence, MotionProps } from "framer-motion";
 import { Eye, EyeOff } from "lucide-react";
 
-interface PasswordInputProps
-  extends React.InputHTMLAttributes<HTMLInputElement> {
+interface PasswordInputProps extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  keyof MotionProps
+> {
   showToggle?: boolean;
   error?: boolean;
 }
@@ -19,28 +22,44 @@ export default function PasswordInput({
 
   return (
     <div className="relative">
-      <input
+      <motion.input
         type={showPassword ? "text" : "password"}
-        className={`appearance-none rounded-md relative block w-full px-3 py-2 border ${
-          error
-            ? "border-red-300 focus:border-red-500 focus:ring-red-500"
-            : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-        } placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 pr-10 ${className}`}
+        className={className}
         {...props}
       />
       {showToggle && (
-        <button
+        <motion.button
           type="button"
-          className="absolute inset-y-0 right-0 pr-3 flex items-center"
+          className="absolute inset-y-0 right-0 pr-3 flex items-center z-20 group"
           onClick={() => setShowPassword(!showPassword)}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
           tabIndex={-1}
         >
-          {showPassword ? (
-            <EyeOff className="h-5 w-5 text-gray-400" />
-          ) : (
-            <Eye className="h-5 w-5 text-gray-400" />
-          )}
-        </button>
+          <AnimatePresence mode="wait" initial={false}>
+            {showPassword ? (
+              <motion.div
+                key="eyeoff"
+                initial={{ scale: 0, rotate: -180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                exit={{ scale: 0, rotate: 180 }}
+                transition={{ duration: 0.2 }}
+              >
+                <EyeOff className="h-5 w-5 text-slate-400 group-hover:text-fuchsia-400 transition-colors" />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="eye"
+                initial={{ scale: 0, rotate: -180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                exit={{ scale: 0, rotate: 180 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Eye className="h-5 w-5 text-slate-400 group-hover:text-violet-400 transition-colors" />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.button>
       )}
     </div>
   );

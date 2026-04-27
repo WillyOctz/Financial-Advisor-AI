@@ -276,15 +276,18 @@ class TwoFactorEnableRequest(BaseModel):
     phone_number: Optional[str] = None
     
 class TwoFactorVerifyRequest(BaseModel):
-    partial_token: str
+    partial_token: Optional[str] = None
     code: Optional[str] = None
     backup_code: Optional[str] = None
     
 class TwoFactorSetupResponse(BaseModel):
-    qr_code_url: str
-    secret: str
+    qr_code_url: Optional[str] = None
+    secret: Optional[str] = None
     backup_codes: List[str]
     method: str
+    verification_sent: Optional[bool] = None
+    message: Optional[str] = None
+    phone_number: Optional[str] = None
     
 class TwoFactorDisableRequest(BaseModel):
     password: str

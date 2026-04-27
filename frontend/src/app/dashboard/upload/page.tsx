@@ -1,25 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { SingleUploadView } from "@/components/forms/SingleUploadView";
 import { MultiUploadView } from "@/components/forms/MultiUploadView";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Upload, Files, FileUp, ChevronDown, Download } from "lucide-react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Upload,
+  Download,
+  FileText,
+  FileSpreadsheet,
+  Code,
+  Sparkles,
+  Info,
+  CheckCircle2,
+  ArrowRight,
+  Zap,
+  CheckCircle,
+  Circle,
+} from "lucide-react";
 import * as XLSX from "xlsx";
 
 type UploadMode = "single" | "multiple";
 
 export default function UploadPage() {
+  const [showGuide, setShowGuide] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [uploadMode, setUploadMode] = useState<UploadMode>("single");
+
+  // mount animation
+  React.useEffect(() => {
+    setMounted(false);
+  }, []);
 
   const templateData = [
     ["Date", "Description", "Amount", "Category"],
@@ -72,161 +86,400 @@ export default function UploadPage() {
     window.URL.revokeObjectURL(url);
   };
 
+  // templates options with icons and descriptions
+  const templates = [
+    {
+      name: "CSV",
+      description: "Simple text format",
+      icon: FileText,
+      color: "blue",
+      gradient: "from-blue-500 to-cyan-500",
+      bgGradient: "from-blue-50 to-cyan-30",
+      onclick: downloadCSVTemplate,
+    },
+    {
+      name: "Excel",
+      description: "Microsoft Excel format",
+      icon: FileSpreadsheet,
+      color: "emerald",
+      gradient: "from-emerald-500 to-teal-500",
+      bgGradient: "from-emerald-50 to-teal-50",
+      onClick: downloadExcelTemplate,
+    },
+    {
+      name: "JSON",
+      description: "For Developers",
+      icon: Code,
+      color: "purple",
+      gradient: "from-purple-500 to-pink-500",
+      bgGradient: "from-purple-50 to-pink-50",
+      onClick: downloadJSONTemplate,
+    },
+  ];
+
+  // upload steps for visual guide
+  const steps = [
+    {
+      number: 1,
+      title: "Download Template",
+      description: "Choose your preferred format",
+      icon: Download,
+    },
+    {
+      number: 2,
+      title: "Fill your data",
+      description: "Add your financial documents",
+      icon: FileText,
+    },
+    {
+      number: 3,
+      title: "Upload File",
+      description: "Drag and drop or click to upload",
+      icon: Upload,
+    },
+  ];
+
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <div className="space-y-6">
-          {/* Header Section */}
-          <div className="flex justify-between items-start">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                Upload Financial Data
-              </h1>
-              <p className="text-gray-600 mt-2">
-                Upload your transaction documents in .csv or .excel formats
-              </p>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5 }}
+        >
+          {/* Hero Section */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="relative bg-linear-to-br from-slate-900 via-blue-900 to-slate-900 rounded-3xl p-8 md:p-12 overflow-hidden shadow-2xl"
+          >
+            {/* Animated background elements */}
+            <div className="absolute inset-0 opacity-20">
+              <motion.div
+                className="absolute top-0 right-0 w-96 h-96 bg-linear-to-br from-blue-400 to-cyan-400 rounded-full blur-3xl"
+                animate={{
+                  scale: [1, 1.2, 1],
+                  x: [0, 50, 0],
+                  y: [0, 30, 0],
+                }}
+                transition={{
+                  duration: 8,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+              />
+              <motion.div
+                className="absolute bottom-0 left-0 w-96 h-96 bg-linear-to-tr from-purple-400 to-pink-400 rounded-full blur-3xl"
+                animate={{
+                  scale: [1.2, 1, 1.2],
+                  x: [0, -30, 0],
+                  y: [0, -50, 0],
+                }}
+                transition={{
+                  duration: 8,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                  delay: 1,
+                }}
+              />
             </div>
 
-            {/* Upload Mode Toggle Button */}
-            {/*<div className="flex items-center space-x-3">
-              <span className="text-sm text-gray-500">
-                {uploadMode === "single" ? "Single File" : "Multiple Files"}
-              </span>
-              <button
-                onClick={() =>
-                  setUploadMode(uploadMode === "single" ? "multiple" : "single")
-                }
-                className={`
-                  relative inline-flex h-10 w-48 items-center rounded-full 
-                  transition-colors focus:outline-none focus:ring-2 
-                  focus:ring-blue-500 focus:ring-offset-2
-                  ${uploadMode === "single" ? "bg-blue-600" : "bg-purple-600"}
-                `}
-              >
-                <span
-                  className={`
-                    absolute left-1 flex items-center justify-center
-                    transition-transform duration-300 ease-in-out
-                    ${
-                      uploadMode === "single"
-                        ? "translate-x-0"
-                        : "translate-x-22"
-                    }
-                  `}
+            {/* Content */}
+            <div className="relative z-10">
+              <div className="flex items-center gap-3 mb-4">
+                <motion.div
+                  className="p-3 bg-white/10 backdrop-blur-sm rounded-xl"
+                  whileHover={{ scale: 1.1, rotate: 360 }}
+                  transition={{ duration: 0.6 }}
                 >
-                  <span className="flex h-8 w-20 items-center justify-center rounded-full bg-white shadow-sm">
-                    {uploadMode === "single" ? (
-                      <FileUp className="h-4 w-4 text-blue-600 mr-1" />
-                    ) : (
-                      <Files className="h-4 w-4 text-purple-600 mr-1" />
-                    )}
-                    <span
-                      className={`text-sm font-medium ${
-                        uploadMode === "single"
-                          ? "text-blue-600"
-                          : "text-purple-600"
-                      }`}
-                    >
-                      {uploadMode === "single" ? "Single" : "Multi"}
-                    </span>
-                  </span>
+                  <Upload className="w-6 h-6 text-white" />
+                </motion.div>
+                <span className="text-blue-300 text-sm font-medium tracking-wide uppercase">
+                  Data Import Center
                 </span>
-                <span className="sr-only">Toggle upload mode</span>
-              </button>
-            </div>*/}
-          </div>
-
-          {/* Template Download Section */}
-          <Card className="bg-blue-50 border-blue-200">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-blue-900 mb-1">
-                    Download Template
-                  </h3>
-                  <p className="text-blue-700 text-sm">
-                    Choose your preferred format for the template file
-                  </p>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-                      <Download className="w-4 h-4 mr-2" />
-                      Download Template
-                      <ChevronDown className="w-4 h-4 ml-2" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={downloadCSVTemplate}>
-                      <div className="flex items-center">
-                        <div className="w-8 h-8 flex items-center justify-center bg-blue-100 rounded mr-2">
-                          <span className="text-xs font-bold text-blue-700">
-                            CSV
-                          </span>
-                        </div>
-                        <div>
-                          <div className="font-medium">CSV Format</div>
-                          <div className="text-xs text-gray-500">
-                            Simple Text Format
-                          </div>
-                        </div>
-                      </div>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={downloadExcelTemplate}>
-                      <div className="flex items-center">
-                        <div className="w-8 h-8 flex items-center justify-center bg-green-100 rounded mr-2">
-                          <span className="text-xs font-bold text-green-700">
-                            XLSX
-                          </span>
-                        </div>
-                        <div>
-                          <div className="font-medium">Excel Format</div>
-                          <div className="text-xs text-gray-500">
-                            Microsoft Excel
-                          </div>
-                        </div>
-                      </div>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={downloadJSONTemplate}>
-                      <div className="flex items-center">
-                        <div className="w-8 h-8 flex items-center justify-center bg-purple-100 rounded mr-2">
-                          <span className="text-xs font-bold text-purple-700">
-                            JSON
-                          </span>
-                        </div>
-                        <div>
-                          <div className="font-medium">JSON Format</div>
-                          <div className="text-xs text-gray-500">
-                            For Developers
-                          </div>
-                        </div>
-                      </div>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
               </div>
-            </CardContent>
-          </Card>
 
-          {/* Dynamic View Rendering */}
-          <div className="transition-all duration-300 ease-in-out">
+              <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
+                Upload Your Financial Data
+              </h1>
+              <p className="text-xl text-slate-200 max-w-3xl mb-6">
+                Import your transactions in CSV or Excel format.
+              </p>
+
+              {/* Quick Stats */}
+              <div className="flex flex-wrap gap-6 mt-8">
+                {[
+                  { label: "Supported Formats", value: "3", icon: FileText },
+                  { label: "Max File Size", value: "10MB", icon: Zap },
+                  //{ label: "Processing Time", value: "< 30s", icon: Sparkles },
+                ].map((stat, index) => (
+                  <motion.div
+                    key={index}
+                    className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.3 + index * 0.1 }}
+                    whileHover={{ scale: 1.05 }}
+                  >
+                    <stat.icon className="w-5 h-5 text-blue-300" />
+                    <div>
+                      <div className="text-2xl font-bold text-white">
+                        {stat.value}
+                      </div>
+                      <div className="text-xs text-slate-300">{stat.label}</div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Process Steps */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="grid grid-cols-1 md:grid-cols-3 gap-9 mt-4"
+          >
+            {steps.map((step, index) => (
+              <motion.div
+                key={index}
+                className="relative"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 + index * 0.1 }}
+              >
+                <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow overflow-hidden group">
+                  {/* Number badge */}
+                  <div className="absolute top-4 right-4">
+                    <div className="w-10 h-10 bg-linear-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white font-bold shadow-lg group-hover:scale-110 transition-transform">
+                      {step.number}
+                    </div>
+                  </div>
+
+                  <CardContent className="p-6">
+                    <motion.div
+                      className="w-12 h-12 bg-linear-to-br from-blue-100 to-cyan-100 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"
+                      whileHover={{ rotate: 360 }}
+                      transition={{ duration: 0.6 }}
+                    >
+                      <step.icon className="w-6 h-6 text-blue-600" />
+                    </motion.div>
+                    <h3 className="text-lg font-bold text-slate-900 mb-2">
+                      {step.title}
+                    </h3>
+                    <p className="text-slate-6000 text-sm">
+                      {step.description}
+                    </p>
+                  </CardContent>
+
+                  {/* Connector arrow */}
+                  {index < steps.length - 1 && (
+                    <div className="hidden md:block absolute top-1/2 -right-7 transform -translate-y-1/2 z-10">
+                      <ArrowRight className="w-6 h-6 text-blue-400" />
+                    </div>
+                  )}
+                </Card>
+              </motion.div>
+            ))}
+          </motion.div>
+
+          {/* Template download section */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="mt-4"
+          >
+            <Card className="border-0 shadow-xl overflow-hidden">
+              <CardContent className="p-8">
+                <div className="flex items-start justify-between mb-6">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Download className="w-6 h-6 text-blue-600" />
+                      <h2 className="text-2xl font-bold text-slate-900">
+                        Download Template
+                      </h2>
+                    </div>
+                    <p className="text-slate-600">
+                      Choose your preferred format and fill in your financial
+                      data
+                    </p>
+                  </div>
+
+                  <motion.button
+                    onClick={() => setShowGuide(!showGuide)}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Info className="w-4 h-4" />
+                    <span className="text-sm font-medium">
+                      {showGuide ? "Hide" : "Show"} Guide
+                    </span>
+                  </motion.button>
+                </div>
+
+                {/* Template Format Guide */}
+                <AnimatePresence>
+                  {showGuide && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mb-6 bg-blue-50 rounded-xl p-6 border border-blue-100"
+                    >
+                      <h3 className="font-semibold text-blue-900 mb-3">
+                        Required Columns:
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {[
+                          {
+                            name: "Date",
+                            example: "2025-01-10",
+                            required: true,
+                          },
+                          {
+                            name: "Description",
+                            example: "Groceries Week 2",
+                            required: true,
+                          },
+                          { name: "Amount", example: "76.99", required: true },
+                          {
+                            name: "Category",
+                            example: "Income/Expense",
+                            required: true,
+                          },
+                        ].map((col, index) => (
+                          <motion.div
+                            key={index}
+                            className="flex items-start gap-3"
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: index * 0.1 }}
+                          >
+                            <CheckCircle className="w-5 h-5 rhink-0 mt-0.5 text-emerald-500" />
+                            <div>
+                              <div className="font-medium text-slate-900">
+                                {col.name}
+                                {col.required && (
+                                  <span className="text-red-500 ml-1">*</span>
+                                )}
+                              </div>
+                              <div className="text-sm text-slate-600">
+                                e.g., {col.example}
+                              </div>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Template Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {templates.map((template, index) => (
+                    <motion.div
+                      key={index}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.5 + index * 0.1 }}
+                      whileHover="hover"
+                    >
+                      <motion.button
+                        onClick={template.onclick}
+                        className="w-full group relative overflow-hidden rounded-2xl p-6 bg-linear-to-br bg-white border-2 border-slate-200 hover:border-transparent transition-all shadow-lg hover:shadow-2xl"
+                        variants={{
+                          hover: { scale: 1.05, y: -8 },
+                        }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 400,
+                          damping: 200,
+                        }}
+                      >
+                        {/* Background Gradient (appear on hover) */}
+                        <div
+                          className={`absolute inset-0 bg-linear-to-br ${template.bgGradient} opacity-0 group-hover:opacity-100 transition-opacity`}
+                        />
+
+                        {/* Content */}
+                        <div className="relative z-10">
+                          {/* Icon */}
+                          <motion.div
+                            className={`w-16 h-16 mx-auto mb-4 bg-linear-to-br ${template.gradient} rounded-2xl flex items-center justify-center shadow-lg group-hover:shadow-xl`}
+                            whileHover={{ rotate: 360 }}
+                            transition={{ duration: 0.6 }}
+                          >
+                            <template.icon className="w-8 h-8 text-white" />
+                          </motion.div>
+
+                          {/* Name */}
+                          <h3 className="text-xl font-bold text-slate-900 mb-2">
+                            {template.name}
+                          </h3>
+
+                          {/* Description */}
+                          <p className="text-sm text-slate-600 mb-4">
+                            {template.description}
+                          </p>
+
+                          {/* Download Button */}
+                          <div className="flex items-center justify-center gap-2 text-sm font-medium text-slate-700 group-hover:text-blue-600 transition-colors">
+                            <Download className="w-4 h-4" />
+                            <span>Download</span>
+                          </div>
+                        </div>
+
+                        {/* Glow Effect */}
+                        <div
+                          className={`absolute inset-0 bg-linear-to-br ${template.gradient} opacity-0 group-hover:opacity-10 blur-2xl transition-opacity`}
+                        ></div>
+                      </motion.button>
+                    </motion.div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+          
+          {/* Upload Area */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+            className="mt-4"
+          >
             <MultiUploadView/>
-          </div>
+          </motion.div>
 
-          {/* Mode Switch Hint */}
-          {/*<div className="text-center text-sm text-gray-500 mt-4">
-            <button
-              onClick={() =>
-                setUploadMode(uploadMode === "single" ? "multiple" : "single")
-              }
-              className="text-blue-600 hover:text-blue-800 underline underline-offset-2"
-            >
-              Switch to{" "}
-              {uploadMode === "single" ? "multiple files" : "single file"}{" "}
-              upload
-            </button>
-          </div>*/}
-        </div>
+          {/* Help Section */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7 }}
+            className="mt-5"
+          >
+            <div className="flex items-start gap-4">
+              <div className="shrink-0">
+                <div className="w-12 h-12 bg-linear-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center">
+                  <Info className="w-6 h-6 text-white"/>
+                </div>
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-amber-900 mb-2">
+                  Need Help Getting Started?
+                </h3>
+                <p className="text-amber-700 text-sm mb-4">
+                  Download a template, fill in your transaction data, and upload it
+                  here.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
       </DashboardLayout>
     </ProtectedRoute>
   );

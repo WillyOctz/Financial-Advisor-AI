@@ -7,8 +7,11 @@ from backend.db.session import get_db
 from backend.services.auth_service import AuthService, SECRET_KEY, ALGORITHM
 from backend.services.email_service import EmailService
 from backend.models.database import User
-from backend.models.schemas import (UserCreate, UserLogin, Token, UserResponse, 
-VerificationConfirm, ResendVerification, ForgotPasswordRequest, ResetPasswordRequest, PasswordResetConfirm, TwoFactorVerifyRequest)
+from backend.models.schemas import (
+    UserCreate, UserLogin, Token, UserResponse, 
+    VerificationConfirm, ResendVerification, ForgotPasswordRequest, 
+    ResetPasswordRequest, PasswordResetConfirm, TwoFactorVerifyRequest
+)
 from jose import JWTError, jwt
 from slowapi import Limiter
 from backend.db.redis_client import cache
@@ -122,7 +125,7 @@ def resend_verification(
 
 @router.post("/forgot-password")
 @limiter.limit("3/minute")
-def forgot_password(request: Request ,data: ForgotPasswordRequest, db: Session = Depends(get_db)) -> Dict[str, Any]:
+async def forgot_password(request: Request ,data: ForgotPasswordRequest, db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Initiate password reset process"""
     auth_service = AuthService(db)
     email_service = EmailService()
@@ -194,7 +197,7 @@ def verify_reset_token(token: str, db: Session = Depends(get_db)) -> Dict[str, A
 
 @router.post("/login", response_model=Token)
 @limiter.limit("10/minute")
-def login(request: Request, login_data: UserLogin, db: Session = Depends(get_db)):
+async def login(request: Request, login_data: UserLogin, db: Session = Depends(get_db)):
     auth_service = AuthService(db)
     
     try:
@@ -227,6 +230,20 @@ def login(request: Request, login_data: UserLogin, db: Session = Depends(get_db)
     # check if 2fa is enabled
     if user.two_factor_enabled:
         
+        # for email/sms methods, send otp first
+        if user.two_factor_method in ['email', 'sms']:
+            # Clear any existing rate limit to ensure OTP can be sent during login
+            auth_service.otp_service.clear_rate_limit(user.id, purpose="2fa_login")
+            
+            # Send OTP (uses default "2fa_login" purpose)
+            otp_sent = await auth_service.send_2fa_otp(user)
+            
+            if not otp_sent:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to send verification code. Please try again."
+                )
+                 
         # return a token that used for 2fa authentication
         partial_token = auth_service.create_access_token(
             data={"sub": user.email, "user_id": user.id, "requires_2fa": True, "type": "partial_token"},
@@ -238,7 +255,7 @@ def login(request: Request, login_data: UserLogin, db: Session = Depends(get_db)
             "token_type": "bearer",
             "user": UserResponse.from_orm(user),
             "partial_token": partial_token,
-            "message": "2FA verification required",
+            "message": f"2FA verification required. check your {user.two_factor_method}",
             "method": user.two_factor_method
         }
         
@@ -256,7 +273,7 @@ def login(request: Request, login_data: UserLogin, db: Session = Depends(get_db)
 
 @router.post("/verify-2fa")
 @limiter.limit("5/minute")
-def verify_two_factor(
+async def verify_two_factor(
     request: Request,
     verification_data: TwoFactorVerifyRequest,
     db: Session = Depends(get_db)
@@ -302,25 +319,95 @@ def verify_two_factor(
                     "user_backup_code": True
                 }
                 
-        # Verify TOTP code
+        # Verify TOTP code based on 2FA method
         if verification_data.code and user.two_factor_secret:
-            if auth_service.verify_two_factor_code(user.two_factor_secret, verification_data.code):
-                # Generate full access token
-                access_token = auth_service.create_access_token(
-                    data={"sub": user.email, "user_id": user.id, "requires_2fa": False}
-                )
+            if verification_data.code:
+                verified = False
                 
-                return {
-                    "access_token": access_token,
-                    "token_type": "bearer",
-                    "user": UserResponse.from_orm(user),
-                    "user_backup_code": False
-                }
+                # app based TOTP
+                if user.two_factor_method == 'app' and user.two_factor_secret:
+                    from backend.services.auth_service import decrypt_2fa_secret
+                    decrypted_secret = decrypt_2fa_secret(user.two_factor_secret)
+                    verified = auth_service.verify_two_factor_code(decrypted_secret, verification_data.code)
+                    
+                # email/sms based TOTP
+                elif user.two_factor_method in ['email', 'sms']:
+                    verified = auth_service.verify_2fa_otp(user, verification_data.code)
+                    
+                if verified:
+                    access_token = auth_service.create_access_token(
+                        data={"sub": user.email, "user_id": user.id, "requires_2fa": False}
+                    )
+                    
+                    return {
+                        "access_token": access_token,
+                        "token_type": "bearer",
+                        "user": UserResponse.from_orm(user),
+                        "user_backup_code": False
+                    }
                 
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid verification code"
         )
+        
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired token"
+        )
+        
+@router.post("/resend-2fa-code")
+@limiter.limit("3/minute")
+async def resend_2fa_code(
+    request: Request,
+    partial_token: str,
+    db: Session = Depends(get_db)
+):
+    """Resend 2fa OTP Code"""
+    auth_service = AuthService(db)
+    
+    try:
+        payload = jwt.decode(partial_token, SECRET_KEY, algorithms=[ALGORITHM])
+        
+        if not payload.get("requires_2fa"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid token"
+            )
+            
+        user_id = payload.get("user_id")
+        user = db.query(User).filter(User.id == user_id).first()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+            
+        # only allow resend for email/SMS
+        if user.two_factor_method not in ['email', 'sms']:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Code resend only available for email/SMS 2FA"
+            )
+        
+        # Clear rate limit to allow resend during login
+        auth_service.otp_service.clear_rate_limit(user.id, purpose="2fa_login")
+        
+        # send new OTP (uses default "2fa_login" purpose)
+        otp_sent = await auth_service.send_2fa_otp(user)
+        
+        if not otp_sent:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to send verification code"
+            )
+            
+        return {
+            "message": f"New verification code sent to your {user.two_factor_method}",
+            "method": user.two_factor_method
+        }
         
     except JWTError:
         raise HTTPException(

@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { motion, AnimatePresence, Variants } from "framer-motion";
 import { useMultiUpload } from "@/lib/hooks/useMultiUpload";
 import { FileUpload } from "@/components/forms/FileUpload";
 import { ColumnMapping } from "@/components/forms/ColumnMapping";
+import { UploadProgress } from "@/components/forms/UploadProgress";
 import { ColumnMapping as ColumnMappingType } from "@/types/financial";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
 import {
   CheckCircle,
@@ -17,9 +18,16 @@ import {
   FileText,
   X,
   ChevronDown,
-  ChevronUp,
   Upload,
   ArrowLeft,
+  Zap,
+  FileSpreadsheet,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  Sparkles,
+  Play,
+  Trash,
 } from "lucide-react";
 
 interface FileWithMapping {
@@ -29,7 +37,53 @@ interface FileWithMapping {
   status: "pending" | "processing" | "completed" | "failed";
   progress?: number;
   error?: string;
+  uploadId?: string;
 }
+
+// animation variants
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+      delayChildren: 0.1,
+    },
+  },
+} satisfies Variants;
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: "spring",
+      stiffness: 100,
+      damping: 15,
+    },
+  },
+} satisfies Variants;
+
+const fileCardVariants = {
+  hidden: { opacity: 0, scale: 0.8, y: 20 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: {
+      type: "spring",
+      stiffness: 200,
+      damping: 20,
+    },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.8,
+    x: -50,
+    transition: { duration: 0.2 },
+  },
+} satisfies Variants;
 
 export function MultiUploadView() {
   const [files, setFiles] = useState<FileWithMapping[]>([]);
@@ -138,6 +192,12 @@ export function MultiUploadView() {
     } else if (currentFileIndex && currentFileIndex > index) {
       setCurrentFileIndex((prev) => (prev !== null ? prev - 1 : null));
     }
+
+    toast({
+      title: "File Removed",
+      description: "File removed from queue",
+      duration: 1500,
+    });
   };
 
   const handleMappingComplete = (mapping: ColumnMappingType) => {
@@ -226,8 +286,13 @@ export function MultiUploadView() {
         setIsProcessing(false);
       }
     } catch (error) {
-      console.error("Failed to process files:", error);
+      //console.error("Failed to process files:", error);
       setIsProcessing(false);
+      toast({
+        title: "Processing Failed",
+        description: "An error occurred while processing files",
+        variant: "destructive",
+      });
     }
   };
 
@@ -268,231 +333,400 @@ export function MultiUploadView() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "completed":
-        return <CheckCircle className="w-5 h-5 text-green-500" />;
+        return (
+          <motion.div
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 200 }}
+          >
+            <CheckCircle className="w-6 h-6 text-green-600" />
+          </motion.div>
+        );
       case "failed":
-        return <XCircle className="w-5 h-5 text-red-500" />;
+        return (
+          <motion.div
+            animate={{ rotate: [0, -10, 10, -10, 0] }}
+            transition={{ duration: 0.5 }}
+          >
+            <XCircle className="w-6 h-6 text-red-600" />
+          </motion.div>
+        );
       case "processing":
-        return <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />;
+        return (
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+          >
+            <Loader2 className="w-6 h-6 text-blue-600" />
+          </motion.div>
+        );
       default:
-        return <FileText className="w-5 h-5 text-gray-400" />;
+        return <Clock className="w-6 h-6 text-slate-400" />;
     }
   };
 
   // file queue view
   if (!showMapping) {
     return (
-      <div className="space-y-6">
-        {/* File Upload Area */}
-        <FileUpload
-          onFileSelect={handleFileSelect}
-          isUploading={isProcessing}
-          onCancel={handleReset}
-          acceptedTypes={[".csv", ".xlsx", ".xls"]}
-        />
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="space-y-6"
+      >
+        {/* File upload area */}
+        <motion.div variants={itemVariants}>
+          <FileUpload
+            onFileSelect={handleFileSelect}
+            isUploading={isProcessing}
+          />
+        </motion.div>
 
-        {/* File Queue */}
-        {files.length > 0 && (
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Upload Queue ({files.length} files)</CardTitle>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {completedCount} of {files.length} completed
-                  </p>
-                </div>
-                <div className="flex space-x-2">
-                  {!isProcessing && (
-                    <Button
-                      variant="outline"
-                      onClick={handleReset}
-                      className="text-red-600 border-red-200 hover:bg-red-50"
+        {/* Overall Progress Header */}
+        <AnimatePresence>
+          {isProcessing && files.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              variants={itemVariants}
+            >
+              <Card className="border-0 shadow-2xl overflow-hidden">
+                <div className="bg-linear-to-r from-blue-600 via-purple-600 to-cyan-600 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <motion.div
+                        animate={{
+                          rotate: [0, 360],
+                          scale: [1, 1.1, 1],
+                        }}
+                        transition={{
+                          duration: 3,
+                          repeat: Infinity,
+                        }}
+                      >
+                        <Sparkles className="w-7 h-7 text-white" />
+                      </motion.div>
+                      <div>
+                        <h3 className="text-white text-2xl font-bold">
+                          Processing {files.length} File{" "}
+                          {files.length !== 1 ? "s" : ""}
+                        </h3>
+                        <p className="text-blue-100 text-sm mt-1">
+                          {completedCount} of {files.length} completed
+                        </p>
+                      </div>
+                    </div>
+
+                    <motion.div
+                      className="text-right"
+                      key={overallProgress}
+                      initial={{ scale: 1.3 }}
+                      animate={{ scale: 1 }}
                     >
-                      <X className="w-4 h-4 mr-1" />
-                      Clear All
-                    </Button>
-                  )}
-                  <Button
-                    onClick={handleAllProcess}
-                    disabled={isProcessing || files.some((f) => !f.mapping)}
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    {isProcessing ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="w-4 h-4 mr-2" />
-                        Process All Files
-                      </>
-                    )}
-                  </Button>
+                      <div className="text-4xl font-bold text-white">
+                        {overallProgress}%
+                      </div>
+                      <p className="text-blue-100 text-sm">Overall</p>
+                    </motion.div>
+                  </div>
+
+                  <div className="h-3 bg-white/20 rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full bg-white rounded-full"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${overallProgress}%` }}
+                      transition={{ duration: 0.5 }}
+                    />
+                  </div>
                 </div>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Files Queue */}
+        {files.length > 0 && (
+          <motion.div variants={itemVariants}>
+            <Card className="border-0 shadow-2xl overflow-hidden">
+              {/* Header */}
+              <div className="bg-linear-to-br from-slate-700 via-slate-800 to-slate-900 p-6">
+                <CardHeader className="p-0">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <FileSpreadsheet className="w-7 h-7 text-white" />
+                      <div>
+                        <CardTitle className="text-white text-2xl font-bold">
+                          File Queue
+                        </CardTitle>
+                        <p className="text-slate-300 text-sm mt-1">
+                          {files.length} file {files.length !== 1 ? "s" : ""}{" "}
+                          ready for upload
+                        </p>
+                      </div>
+                    </div>
+
+                    {!isProcessing && (
+                      <div className="flex items-center gap-3">
+                        <Button
+                          onClick={handleReset}
+                          variant="outline"
+                          className="bg-rose-300 text-rose-700 hover:bg-rose-400 shadow-lg h-12 px-6 font-bold"
+                        >
+                          <Trash className="w-5 h-5 mr-2"/>
+                          Delete All
+                        </Button>
+                        <Button
+                          onClick={handleAllProcess}
+                          disabled={files.some((f) => !f.mapping)}
+                          className="bg-white text-slate-900 hover:bg-slate-100 shadow-lg h-12 px-6 font-bold"
+                        >
+                          <Play className="w-5 h-5 mr-2" />
+                          Process All
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </CardHeader>
               </div>
 
-              {/* Overall Progress Bar */}
-              {isProcessing && (
-                <div className="mt-4 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Overall Progress</span>
-                    <span className="font-medium">{overallProgress}%</span>
-                  </div>
-                  <Progress value={overallProgress} className="h-2" />
-                </div>
-              )}
-            </CardHeader>
-
-            <CardContent className="space-y-3">
-              {files.map((fileItem, index) => (
-                <div
-                  key={`${fileItem.file.name}-${index}`}
-                  className={`border rounded-lg p-4 transition-colors ${
-                    fileItem.status === "completed"
-                      ? "bg-green-50 border-green-200"
-                      : fileItem.status === "failed"
-                        ? "bg-red-50 border-red-200"
-                        : "bg-white hover:bg-gray-50"
-                  }`}
-                >
-                  {/* File Header */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3 flex-1">
-                      {getStatusIcon(fileItem.status)}
-                      <div className="flex-1">
-                        <div className="flex items-center">
-                          <p className="font-medium text-gray-900">
-                            {fileItem.file.name}
-                          </p>
-                          <span className="ml-2 text-xs text-gray-500">
-                            ({(fileItem.file.size / 1024 / 1024).toFixed(2)} MB)
-                          </span>
-                        </div>
-                        <div className="flex items-center mt-1">
-                          {fileItem.mapping ? (
-                            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
-                              ✓ Columns mapped
-                            </span>
-                          ) : (
-                            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded">
-                              ⚠ Mapping required
-                            </span>
-                          )}
-                          {fileItem.status === "processing" && (
-                            <span className="ml-2 text-xs text-blue-600">
-                              Processing: {fileItem.progress}%
-                            </span>
-                          )}
-                          {fileItem.error && (
-                            <span className="ml-2 text-xs text-red-600">
-                              Error: {fileItem.error}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      {!isProcessing &&
-                        fileItem.status === "pending" &&
-                        !fileItem.mapping && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleStartMapping(index)}
-                            className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                          >
-                            Map Columns
-                          </Button>
-                        )}
-                      {!isProcessing && fileItem.status === "pending" && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleRemoveFile(index)}
-                          className="text-gray-500 hover:text-red-600"
+              {/* Files list */}
+              <CardContent className="p-6 space-y-4">
+                <AnimatePresence mode="popLayout">
+                  {files.map((fileItem, index) => (
+                    <motion.div
+                      key={`${fileItem.file.name}-${index}`}
+                      variants={fileCardVariants}
+                      initial="hidden"
+                      animate="visible"
+                      exit="exit"
+                      layout
+                      className="group"
+                    >
+                      {/* Use uploadprogress for processing files */}
+                      {fileItem.status === "processing" ? (
+                        <UploadProgress
+                          uploadStage={`Processing ${fileItem.file.name}`}
+                          uploadProgress={fileItem.progress || 0}
+                          uploadDetails={`Uploading and validating your file...`}
+                          uploadId={fileItem.uploadId}
+                          onCancel={() => handleCancelFile(index)}
+                          isComplete={false}
+                          isError={false}
+                        />
+                      ) : (
+                        // File card for non processing files
+                        <div
+                          className={`relative overflow-hidden rounded-2xl border-2 transition-all ${
+                            fileItem.status === "completed"
+                              ? "border-green-300 bg-linear-to-r from-green-50 to-emerald-50"
+                              : fileItem.status === "failed"
+                                ? "border-red-300 bg-linear-to-r from-red-50 to-rose-50"
+                                : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-md"
+                          }`}
                         >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      )}
-                      {isProcessing && fileItem.status === "processing" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleCancelFile(index)}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          Cancel
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleToggleExpand(index)}
-                      >
-                        {fileItem.isExpanded ? (
-                          <ChevronUp className="w-4 h-4" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
+                          <div className="relative p-5">
+                            {/* File Header */}
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="flex items-center gap-4 flex-1 min-w-0">
+                                {/* Status Icon */}
+                                <motion.div
+                                  whileHover={{ scale: 1.1 }}
+                                  className="shrink-0"
+                                >
+                                  {getStatusIcon(fileItem.status)}
+                                </motion.div>
 
-                  {/* Expanded Details */}
-                  {fileItem.isExpanded && (
-                    <div className="mt-4 pl-8 border-t pt-4">
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <span className="text-gray-500">File type:</span>
-                          <span className="ml-2 font-medium">
-                            {fileItem.file.name.split(".").pop()?.toUpperCase()}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Added:</span>
-                          <span className="ml-2 font-medium">
-                            {new Date().toLocaleString()}
-                          </span>
-                        </div>
-                        {fileItem.mapping && (
-                          <>
-                            <div>
-                              <span className="text-gray-500">
-                                Date column:
-                              </span>
-                              <span className="ml-2 font-medium">
-                                {fileItem.mapping.date}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-gray-500">
-                                Amount column:
-                              </span>
-                              <span className="ml-2 font-medium">
-                                {fileItem.mapping.amount}
-                              </span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                                {/* File info */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <FileSpreadsheet className="w-4 h-4 text-slate-500 shrink-0" />
+                                    <p className="font-bold text-slate-900 truncate">
+                                      {fileItem.file.name}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs text-slate-500">
+                                      {(
+                                        fileItem.file.size /
+                                        1024 /
+                                        1024
+                                      ).toFixed(2)}{" "}
+                                      MB
+                                    </span>
 
-                  {/* Individual Progress Bar */}
-                  {fileItem.status === "processing" &&
-                    fileItem.progress !== undefined && (
-                      <div className="transition-all duration-700 ease-in-out">
-                        <Progress value={overallProgress} className="h-2" />
-                      </div>
-                    )}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+                                    {/* Status Badge */}
+                                    {fileItem.mapping ? (
+                                      <motion.span
+                                        initial={{ scale: 0 }}
+                                        animate={{ scale: 1 }}
+                                        className="inline-flex items-center gap-1 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium"
+                                      >
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        Mapped
+                                      </motion.span>
+                                    ) : (
+                                      <motion.span
+                                        animate={{ scale: [1, 1.05, 1] }}
+                                        transition={{
+                                          duration: 2,
+                                          repeat: Infinity,
+                                        }}
+                                        className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium"
+                                      >
+                                        <AlertTriangle className="w-3 h-3" />
+                                        Need Mapping
+                                      </motion.span>
+                                    )}
+
+                                    {fileItem.error && (
+                                      <span className="text-xs text-red-600 font-medium">
+                                        {fileItem.error}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Action Buttons */}
+                              <div className="flex items-center gap-2 shrink-0">
+                                {!isProcessing &&
+                                  fileItem.status === "pending" &&
+                                  !fileItem.mapping && (
+                                    <motion.div
+                                      whileHover={{ scale: 1.05 }}
+                                      whileTap={{ scale: 0.95 }}
+                                    >
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                          handleStartMapping(index)
+                                        }
+                                        className="border-blue-300 text-blue-600 hover:bg-blue-50 font-medium"
+                                      >
+                                        <Zap className="w-4 h-4 mr-1" />
+                                        Map Columns
+                                      </Button>
+                                    </motion.div>
+                                  )}
+
+                                {!isProcessing &&
+                                  fileItem.status === "pending" && (
+                                    <motion.div
+                                      whileHover={{ scale: 1.1 }}
+                                      whileTap={{ scale: 0.9 }}
+                                    >
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => handleRemoveFile(index)}
+                                        className="text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                      >
+                                        <X className="w-5 h-5" />
+                                      </Button>
+                                    </motion.div>
+                                  )}
+
+                                <motion.div
+                                  whileHover={{ scale: 1.1 }}
+                                  whileTap={{ scale: 0.9 }}
+                                >
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleToggleExpand(index)}
+                                    className="text-slate-400 hover:text-slate-600"
+                                  >
+                                    <motion.div
+                                      animate={{
+                                        rotate: fileItem.isExpanded ? 180 : 0,
+                                      }}
+                                    >
+                                      <ChevronDown className="w-5 h-5" />
+                                    </motion.div>
+                                  </Button>
+                                </motion.div>
+                              </div>
+                            </div>
+
+                            {/* Expanded Details */}
+                            <AnimatePresence>
+                              {fileItem.isExpanded && (
+                                <motion.div
+                                  initial={{ opacity: 0, height: 0 }}
+                                  animate={{ opacity: 1, height: "auto" }}
+                                  exit={{ opacity: 0, height: 0 }}
+                                  transition={{ duration: 0.3 }}
+                                  className="mt-4 pt-4 border-t border-slate-200"
+                                >
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                    <div>
+                                      <span className="font-bold text-slate-900 mt-1">
+                                        Type:
+                                      </span>
+                                      <p className="font-bold text-slate-900 mt-1">
+                                        {fileItem.file.name
+                                          .split(".")
+                                          .pop()
+                                          ?.toUpperCase()}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <span className="text-slate-500 font-medium">
+                                        Status:
+                                      </span>
+                                      <p className="font-bold text-slate-900 mt-1 capitalize">
+                                        {fileItem.status}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </CardContent>
+            </Card>
+          </motion.div>
         )}
-      </div>
+
+        {/* Empty State */}
+        {files.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.3 }}
+          >
+            <Card className="border-2 border-dashed border-slate-300">
+              <CardContent className="p-12 text-center">
+                <motion.div
+                  animate={{
+                    y: [0, -10, 0],
+                  }}
+                  transition={{
+                    duration: 2,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
+                >
+                  <Upload className="w-16 h-16 text-slate-400 mx-auto mb-4" />
+                </motion.div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">
+                  No Files In Queue
+                </h3>
+                <p className="text-slate-600">
+                  Upload files above to get started
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </motion.div>
     );
   }
 
@@ -501,41 +735,85 @@ export function MultiUploadView() {
     currentFileIndex !== null ? files[currentFileIndex] : null;
 
   return (
-    <div className="space-y-4">
-      <Button
-        variant="ghost"
-        onClick={handleBackToFileList}
-        className="mb-2 -ml-2 text-gray-600 hover:text-gray-900"
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="space-y-6"
+    >
+      <motion.div
+        initial={{ x: -20, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={{ delay: 0.2 }}
       >
-        <ArrowLeft className="w-4 h-4 mr-1" />
-        Back to file queue
-      </Button>
+        <Button
+          variant="ghost"
+          onClick={handleBackToFileList}
+          className="mb-2 -ml-2 text-slate-600 hover:text-slate-900"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Queue
+        </Button>
+      </motion.div>
 
+      {/* Current file info */}
       {currentFile && (
-        <div className="space-y-4">
-          <Card className="bg-blue-50 border-blue-200">
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-3">
-                <FileText className="w-6 h-6 text-blue-600" />
-                <div>
-                  <p className="font-medium text-gray-900">
-                    Mapping columns for: {currentFile.file.name}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <Card className="border-0 shadow-lg bg-linear-to-br from-blue-50 to-purple-50">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4">
+                <motion.div
+                  animate={{
+                    rotate: [0, 360],
+                  }}
+                  transition={{
+                    duration: 20,
+                    repeat: Infinity,
+                    ease: "linear",
+                  }}
+                  className="shrink-0"
+                >
+                  <div className="w-12 h-12 bg-linear-to-br from-blue-500 to-purple-500 rounded-xl flex items-center justify-center shadow-lg">
+                    <FileText className="w-6 h-6 text-white" />
+                  </div>
+                </motion.div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-slate-900 text-lg truncate">
+                    {currentFile.file.name}
                   </p>
-                  <p className="text-sm text-blue-700">
+                  <p className="text-sm text-blue-700 font-medium">
                     File {currentFileIndex !== null ? currentFileIndex + 1 : 0}{" "}
                     of {files.length}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-slate-900">
+                    {currentFileIndex !== null ? currentFileIndex + 1 : 0}
+                    <span className="text-slate-500">/{files.length}</span>
                   </p>
                 </div>
               </div>
             </CardContent>
           </Card>
+        </motion.div>
+      )}
 
+      {/* Column Mapping Component */}
+      {currentFile && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
           <ColumnMapping
             file={currentFile.file}
             onMappingComplete={handleMappingComplete}
           />
-        </div>
+        </motion.div>
       )}
-    </div>
+    </motion.div>
   );
 }

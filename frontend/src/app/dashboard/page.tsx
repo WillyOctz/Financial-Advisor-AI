@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   ArrowUpIcon,
   ArrowDownIcon,
@@ -11,10 +11,13 @@ import {
   Loader2,
   AlertCircle,
   Calendar,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 import { useUser } from "@/lib/hooks/useUser";
 import { apiClient } from "@/lib/api/client";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { format } from "path";
 
 interface FinancialMetrics {
   total_income: number;
@@ -36,6 +39,11 @@ export default function DashboardPage() {
   const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const fetchTodaySummary = async () => {
@@ -53,7 +61,7 @@ export default function DashboardPage() {
       } catch (err: any) {
         console.error("Error fetching today's summary:", err);
         setError(
-          err.response?.data?.detail || "Failed to load today's financial data"
+          err.response?.data?.detail || "Failed to load today's financial data",
         );
       } finally {
         setLoading(false);
@@ -67,42 +75,50 @@ export default function DashboardPage() {
     ? [
         {
           title: "Today's Income",
-          value: `$${dailySummary?.total_income.toLocaleString("en-US", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}`,
+          value: dailySummary.total_income,
           change: "+0.0%",
           icon: ArrowUpIcon,
-          color: "text-green-600",
+          color: "emerald",
+          bgGradient: "from-emerald-50 to-teal-50",
+          iconBg: "bg-emerald-100",
+          iconColor: "text-emerald-600",
+          trend: "up",
         },
         {
           title: "Today's Expenses",
-          value: `$${dailySummary?.total_expenses.toLocaleString("en-US", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}`,
+          value: dailySummary.total_expenses,
           change: "+0.0%",
           icon: ArrowDownIcon,
-          color: "text-red-600",
+          color: "rose",
+          bgGradient: "from-rose-50 to-pink-50",
+          iconBg: "bg-rose-100",
+          iconColor: "text-rose-600",
+          trend: "down",
         },
         {
           title: "Net Savings",
-          value: `$${dailySummary?.net_savings.toLocaleString("en-US", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}`,
-          change: dailySummary?.savings_rate
-            ? `+${dailySummary.savings_rate.toFixed(2)}%`
+          value: dailySummary.net_savings,
+          change: dailySummary.savings_rate
+            ? `${dailySummary.savings_rate.toFixed(2)}%`
             : "+0.0%",
           icon: DollarSign,
-          color: "text-blue-600",
+          color: "blue",
+          bgGradient: "from-blue-50 to-indigo-50",
+          iconBg: "bg-blue-100",
+          iconColor: "text-blue-600",
+          trend: "neutral",
         },
         {
           title: "Savings Rate",
-          value: `${dailySummary?.savings_rate.toFixed(2)}%`,
+          value: dailySummary.savings_rate,
           change: "+5.4%",
           icon: TrendingUp,
-          color: "text-purple-600",
+          color: "amber",
+          bgGradient: "from-amber-50 to-yellow-50",
+          iconBg: "bg-amber-100",
+          iconColor: "text-amber-600",
+          trend: "up",
+          isPercentage: true,
         },
       ]
     : [];
@@ -114,15 +130,37 @@ export default function DashboardPage() {
     day: "numeric",
   });
 
+  const formatCurrency = (value: number) => {
+    return value.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
   if (loading) {
     return (
       <ProtectedRoute>
         <DashboardLayout>
-          <div className="flex flex-col items-center justify-center h-64 space-y-4">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-            <span className="text-gray-600">
-              Loading today's financial data...
-            </span>
+          <div className="space-y-8 animate-pulse">
+            {/* Hero Skeleton Layout */}
+            <div className="bg-linear-to-br from-slate-50 to-slate-100 rounded-2xl p-8 border- border-slate-200">
+              <div className="h-10 bg-slate-200 rounded w-1/3 mb-4"></div>
+              <div className="h-6 bg-slate-200 rounded w-1/4"></div>
+            </div>
+
+            {/* Metrics Skeleton */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="bg-white rounded-xl p-6 border border-slate-200 h-40"
+                >
+                  <div className="h-4 bg-slate-200 rounded w-2/3 mb-4"></div>
+                  <div className="h-8 bg-slate-200 rounded w-full mb-2"></div>
+                  <div className="h-3 bg-slate-200 rounded w-1/2"></div>
+                </div>
+              ))}
+            </div>
           </div>
         </DashboardLayout>
       </ProtectedRoute>
@@ -133,12 +171,18 @@ export default function DashboardPage() {
     return (
       <ProtectedRoute>
         <DashboardLayout>
-          <div className="flex flex-col items-center justify-center h-64 space-y-4">
-            <AlertCircle className="w-12 h-12 text-red-500" />
-            <div className="text-center">
-              <p className="text-red-600 font-medium mb-2">{error}</p>
-              <p className="text-gray-500 text-sm">
-                Try refreshing the page or check your connection
+          <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 animate-fade-in">
+            <div className="relative">
+              <div className="absolute inset-0 bg-red-100 blur-3xl opacity-50 rounded-full"></div>
+              <AlertCircle className="w-20 h-20 text-red-500 relative" />
+            </div>
+            <div className="text-center max-w-md">
+              <h3 className="text-2xl font-bold text-slate-900 mb-2">
+                Unable to load data
+              </h3>
+              <p className="text-slate-600 mb-1">{error}</p>
+              <p className="text-sm text-slate-500">
+                Try refreshing the page or check your network
               </p>
             </div>
           </div>
@@ -150,183 +194,316 @@ export default function DashboardPage() {
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                Welcome, {user?.first_name} {user?.last_name}!
-              </h1>
-              <p className="text-gray-600 mt-2">
-                Overview Of your financial insights
-              </p>
+        <div className="space-y-8">
+          {/* Hero section (animation) */}
+          <div
+            className={`bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-8 md:p-12 border border-slate-700 shadow-2xl relative overflow-hidden transition-all duration-700 ${
+              mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+            }`}
+          >
+            {/* Animated background pattern */}
+            <div className="absolute inset-0 opacity-10">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-linear-to-br from-amber-400 to-orange-500 rounded-full blur-3xl animate-pulse"></div>
+              <div className="absolute bottom-0 left-0 w-96 h-96 bg-linear-to-tr from-blue-400 to-cyan-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
             </div>
-            <div className="flex items-center space-x-2 text-gray-500">
-              <Calendar className="w-5 h-5" />
-              <span className="text-sm font-medium">{today}</span>
+
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles className="w-5 h-5 text-amber-400 animate-pulse" />
+                  <span className="text-amber-400 text-sm font-medium tracking-wide uppercase">
+                    Financial Overview
+                  </span>
+                </div>
+                <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
+                  Welcome back, {user?.first_name}
+                </h1>
+                <p className="text-slate-300 text-lg">
+                  Today's financial snapshot
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 px-5 py-3 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
+                <Calendar className="w-5 h-5 text-amber-400" />
+                <div>
+                  <p className="text-xs text-slate-400 uppercase tracking-wide">
+                    Today
+                  </p>
+                  <p className="text-white font-medium">{today}</p>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Financial Metrics */}
+          {/* Financial metrics with staggered animation */}
           {dailySummary && dailySummary.transaction_count > 0 ? (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {displayMetrics.map((metric, index) => (
-                  <Card key={index} className={`border-0 bg-gray-100`}>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">
-                        {metric.title}
-                      </CardTitle>
-                      <metric.icon className={`h-4 w-4 ${metric.color}`} />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{metric.value}</div>
-                      <p className="text-xs text-gray-600 mt-1">
-                        {metric.title.includes("Savings Rate") ? (
-                          `Today's Rate`
-                        ) : (
-                          <>
-                            <span className={metric.color}>
+                  <div
+                    key={index}
+                    className={`group transition-all duration-500 ${
+                      mounted
+                        ? "opacity-100 translate-y-0"
+                        : "opacity-0 translate-y-8"
+                    }`}
+                    style={{ transitionDelay: `${index * 100}ms` }}
+                  >
+                    <Card className="border-0 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 bg-white overflow-hidden relative">
+                      {/* Gradient Background */}
+                      <div
+                        className={`absolute inset-0 bg-linear-to-br ${metric.bgGradient} opacity-50 group-hover:opacity-70 transition-opacity`}
+                      ></div>
+                      <CardContent className="p-6 relative z-10">
+                        {/* Icon */}
+                        <div className="flex items-start justify-between mb-4">
+                          <div
+                            className={`${metric.iconBg} p-3 rounded-xl group-hover:scale-110 transition-transform duration-300`}
+                          >
+                            <metric.icon
+                              className={`h-6 w-6 ${metric.iconColor}`}
+                            />
+                          </div>
+                          {metric.trend !== "neutral" && (
+                            <div
+                              className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                                metric.trend === "up"
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-rose-100 text-rose-700"
+                              }`}
+                            >
+                              {metric.trend === "up" ? "↑" : "↓"}{" "}
                               {metric.change}
-                            </span>{" "}
-                            from yesterday
-                          </>
-                        )}
-                      </p>
-                    </CardContent>
-                  </Card>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Title */}
+                        <h3 className="text-sm font-medium text-slate-600 mb-2">
+                          {metric.title}
+                        </h3>
+
+                        {/* Value */}
+                        <div className="text-3xl font-bold text-slate-900 mb-1">
+                          {metric.isPercentage ? (
+                            `${metric.value.toFixed(2)}%`
+                          ) : (
+                            <span>
+                              <span className="text-2xl text-slate-500">$</span>
+                              {formatCurrency(metric.value)}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Subtitle */}
+                        <p className="text-xs text-slate-500">
+                          {metric.title.includes("Savings Rate")
+                            ? "Today's Rate"
+                            : "vs. yesterday"}
+                        </p>
+                      </CardContent>
+
+                      {/* Hover Effect Border */}
+                      <div className="absolute inset-0 border-2 border-transparent group-hover:border-slate-900/10 rounded-xl transition-colors"></div>
+                    </Card>
+                  </div>
                 ))}
               </div>
 
-              {/* Transaction Summary */}
-              <Card>
-                <CardContent className="p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500 mb-1">
-                        Transaction Today
-                      </h3>
-                      <p className="text-2xl font-bold text-gray-900">
-                        {dailySummary.transaction_count}
+              {/* Transaction Summary Card */}
+              <Card
+                className={`border-0 shadow-lg bg-white transition-all duration-700 ${
+                  mounted
+                    ? "opacity-100 translate-y-0"
+                    : "opacity-0 translate-y-8"
+                }`}
+                style={{ transitionDelay: "400ms" }}
+              >
+                <CardContent className="p-8">
+                  <div className="flex items-center gap-2 mb-6">
+                    <div className="h-1 w-12 bg-linear-to-r from-amber-400 to-orange-500 rounded-full"></div>
+                    <h2 className="text-xl font-bold text-slate-900">
+                      Today's Activity
+                    </h2>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-slate-500 uppercase tracking-wide">
+                        Transactions
                       </p>
+                      <div className="flex items-baseline gap-2">
+                        <p className="text-4xl font-bold text-slate-900">
+                          {dailySummary.transaction_count}
+                        </p>
+                        <span className="text-slate-500 text-sm">recorded</span>
+                      </div>
                     </div>
+
                     {dailySummary.top_expense_categories !== "None" && (
-                      <div>
-                        <h3 className="text-sm font-medium text-gray-500 mb-1">
-                          Top Expense
-                        </h3>
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium text-slate-500 uppercase tracking-wide">
+                          Top Spending
+                        </p>
                         <div>
-                          <p className="text-lg font-semibold text-gray-900">
+                          <p className="text-xl font-bold text-slate-900 mb-1">
                             {dailySummary.top_expense_categories}
                           </p>
-                          <p className="text-sm text-red-600">
-                            $
-                            {dailySummary.top_expense_amount.toLocaleString(
-                              "en-US",
-                              {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              }
-                            )}
+                          <p className="text-2xl font-bold text-rose-600">
+                            ${formatCurrency(dailySummary.top_expense_amount)}
                           </p>
                         </div>
                       </div>
                     )}
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500 mb-1">
-                        Date Range
-                      </h3>
-                      <p className="text-lg font-semibold text-gray-900">
-                        Today
+
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-slate-500 uppercase tracking-wide">
+                        Period
                       </p>
-                      <p className="text-sm text-gray-500">
-                        {dailySummary.timeframe}
-                      </p>
+                      <div>
+                        <p className="text-xl font-bold text-slate-900">
+                          Today
+                        </p>
+                        <p className="text-sm text-slate-600">
+                          {dailySummary.timeframe}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             </>
           ) : (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-yellow-900 mb-2">
-                  No Transactions Today
+            <Card
+              className={`border-0 shadow-lg bg-linear-to-br from-amber-50 to-orange-50 transition-all duration-700 ${
+                mounted
+                  ? "opacity-100 translate-y-0"
+                  : "opacity-0 translate-y-8"
+              }`}
+            >
+              <CardContent className="p-12 text-center">
+                <div className="relative inline-block mb-6">
+                  <div className="absolute inset-0 bg-amber-200 blur-2xl opacity-50 rounded-full"></div>
+                  <AlertCircle className="w-16 h-16 text-amber-600 relative" />
+                </div>
+
+                <h3 className="text-2xl font-bold text-slate-900 mb-3">
+                  No Transactions yet today
                 </h3>
-                <p className="text-yellow-700 mb-4">
-                  You haven't recorded any transactions for today. Start
-                  tracking your finances!
+                <p className="text-slate-600 mb-8 max-w-md mx-auto">
+                  Start tracking your finances by uploading your transactions
                 </p>
-                <div className="flex gap-4 justify-center">
+
+                <div className="flex flex-wrap gap-4 justify-center">
                   <a
                     href="/dashboard/upload"
-                    className="inline-block bg-yellow-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-yellow-700"
+                    className="group inline-flex items-center gap-2 bg-linear-to-r from-amber-500 to-orange-500 text-white px-6 py-3 rounded-xl font-medium hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
                   >
-                    Upload Today's Transactions
+                    Upload Transactions
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </a>
+
                   <a
                     href="/dashboard/analysis"
-                    className="inline-block bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-700"
+                    className="inline-flex items-center gap-2 bg-white text-slate-700 px-6 py-3 rounded-xl font-medium hover:shadow-lg border border-slate-200 hover:-translate-y-1 transition-all duration-300"
                   >
-                    View Historical Data
+                    View History
                   </a>
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Quick Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card className="bg-blue-50 border-blue-200">
-              <CardContent className="p-6">
-                <h3 className="font-semibold text-blue-900 mb-2">
-                  Upload new data
-                </h3>
-                <p className="text-blue-700 text-sm mb-4">
-                  Upload your latest financial transactions for analysis
-                </p>
-                <a
-                  href="/dashboard/upload"
-                  className="inline-block bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700"
-                >
-                  Upload File
-                </a>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-green-50 border-green-200">
-              <CardContent className="p-6">
-                <h3 className="font-semibold text-green-900 mb-2">
-                  Display Analysis
-                </h3>
-                <p className="text-green-700 text-sm mb-4">
-                  Get detailed insights into your spending patterns
-                </p>
-                <a
-                  href="/dashboard/analysis"
-                  className="inline-block bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700"
-                >
-                  View Analysis
-                </a>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-purple-50 border-purple-200">
-              <CardContent className="p-6">
-                <h3 className="font-semibold text-purple-900 mb-2">Forecast</h3>
-                <p className="text-purple-700 text-sm mb-4">
-                  See future expense predictions and trends
-                </p>
-                <a
-                  href="/dashboard/forecast"
-                  className="inline-block bg-purple-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-purple-700"
-                >
-                  View Forecast
-                </a>
-              </CardContent>
-            </Card>
+          {/* Quick Action Grid */}
+          <div
+            className={`grid grid-cols-1 md:grid-cols-3 gap-6 transition-all duration-700 ${
+              mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+            }`}
+            style={{ transitionDelay: "500ms" }}
+          >
+            {[
+              {
+                title: "Upload New Data",
+                description:
+                  "Import your latest financial transactions for instant analysis",
+                href: "/dashboard/upload",
+                icon: "📊",
+                gradient: "from-blue-500 to-cyan-500",
+                hoverGradient: "hover:from-blue-600 hover:to-cyan-600",
+              },
+              {
+                title: "View Analytics",
+                description:
+                  "Deep dive into your spending patterns and financial trends",
+                href: "/dashboard/analysis",
+                icon: "📈",
+                gradient: "from-emerald-500 to-teal-500",
+                hoverGradient: "hover:from-emerald-600 hover:to-teal-600",
+              },
+              {
+                title: "Future Forecast",
+                description:
+                  "AI-powered predictions for your upcoming expenses",
+                href: "/dashboard/forecast",
+                icon: "🔮",
+                gradient: "from-purple-500 to-pink-500",
+                hoverGradient: "hover:from-purple-600 hover:to-pink-600",
+              },
+            ].map((action, index) => (
+              <a
+                key={index}
+                href={action.href}
+                className="group block"
+                style={{ transitionDelay: `${(index + 5) * 100}ms` }}
+              >
+                <Card className="border-0 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 bg-white overflow-hidden relative h-full">
+                  <div
+                    className={`absolute inset-0 bg-linear-to-br ${action.gradient} opacity-0 group-hover:opacity-10 transition-opacity duration-300`}
+                  ></div>
+                  <CardContent className="p-6 relative z-10">
+                    <div className="text-4xl mb-4 group-hover:scale-110 transition-transform duration-300">
+                      {action.icon}
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-900 mb-2 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-linear-to-r group-hover:from-blue-600 group-hover:to-purple-600 transition-all">
+                      {action.title}
+                    </h3>
+                    <p className="text-sm text-slate-600 mb-4 leading-relaxed">
+                      {action.description}
+                    </p>
+                    <div
+                      className={`inline-flex items-center gap-2 text-sm font-medium text-slate-700 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-linear-to-r ${action.gradient}`}
+                    >
+                      Get Started
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </a>
+            ))}
           </div>
         </div>
+
+        {/* Add Custom Styles */}
+        <style jsx>{`
+          @keyframes fade-in {
+            from {
+              opacity: 0;
+              transform: translateY(20px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+
+          .animate-fade-in {
+            animation: fade-in 0.6s ease-out;
+          }
+
+          .delay-1000 {
+            animation-delay: 1s;
+          }
+        `}</style>
       </DashboardLayout>
     </ProtectedRoute>
   );

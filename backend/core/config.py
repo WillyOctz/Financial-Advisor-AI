@@ -51,6 +51,15 @@ class Settings(BaseSettings):
     
     # Sentry
     SENTRY_DSN: str = ""
+    
+    # Email forwarding
+    EMAIL_PROVIDER: str = ""
+    BREVO_API_KEY: str = ""
+    FROM_EMAIL: str = ""
+    FROM_NAME: str = ""
+    
+    # SMS providing 
+    SMS_PROVIDER: str = ""
 
     class Config:
         env_file = ".env"

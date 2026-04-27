@@ -1,15 +1,63 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ColumnMapping as ColumnMappingType } from "@/types/financial";
 import * as XLSX from "xlsx";
+import {
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  FileSpreadsheet,
+  ArrowRight,
+  Sparkles,
+  Calendar,
+  DollarSign,
+  FileText,
+  Tag,
+} from "lucide-react";
 
 interface ColumnMappingProps {
   file: File;
   onMappingComplete: (mapping: ColumnMappingType) => void;
 }
+
+const fieldConfig = [
+  {
+    key: "date" as keyof ColumnMappingType,
+    label: "Date Column",
+    icon: Calendar,
+    color: "blue",
+    description: "Transactions date or timestamp",
+    keywords: ["date", "transaction date", "time", "when"],
+  },
+  {
+    key: "description" as keyof ColumnMappingType,
+    label: "Description Column",
+    icon: FileText,
+    color: "purple",
+    description: "Transactions description or details",
+    keywords: ["desc", "description", "transaction", "details", "merchant"],
+  },
+  {
+    key: "amount" as keyof ColumnMappingType,
+    label: "Amount Column",
+    icon: DollarSign,
+    color: "green",
+    description: "Transactions amount or value",
+    keywords: ["amount", "amt", "value", "price", "total", "sum"],
+  },
+  {
+    key: "type" as keyof ColumnMappingType,
+    label: "Type Column",
+    icon: Tag,
+    color: "orange",
+    description: "Income or Expense indicator",
+    keywords: ["type", "category", "transaction type", "income/expense"],
+  },
+];
 
 export const ColumnMapping: React.FC<ColumnMappingProps> = ({
   file,
@@ -23,6 +71,10 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
     type: "",
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [autoDetected, setAutoDetected] = useState<
+    Set<keyof ColumnMappingType>
+  >(new Set());
+  const [previewData, setPreviewData] = useState<any[]>([]);
 
   useEffect(() => {
     const readFileHeaders = async () => {
@@ -30,12 +82,25 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
 
       try {
         let headers: string[] = [];
+        let preview: any[] = [];
 
         if (file.name.toLowerCase().endsWith(".csv")) {
           // Handle CSV type file
           const text = await file.text();
-          const firstline = text.split("\n")[0];
+          const lines = text.split("\n");
+          const firstline = lines[0];
           headers = firstline.split(",").map((header) => header.trim());
+
+          // get preview data
+          preview = lines.slice(1, 4).map((line) => {
+            const values = line.split(",");
+            return Object.fromEntries(
+              headers.map((header, index) => [
+                header,
+                values[index]?.trim() || "",
+              ]),
+            );
+          });
         } else if (
           file.name.toLowerCase().endsWith(".xlsx") ||
           file.name.toLowerCase().endsWith(".xls")
@@ -54,78 +119,65 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
           if (jsonData.length > 0) {
             // Get the first row which should be headers
             const firstRow = jsonData[0] as any[];
-            
+
             // Safely process headers
             headers = firstRow
-              .filter((cell) => {
-                // Filter out null, undefined, and empty values
-                return cell !== null && 
-                       cell !== undefined && 
-                       cell !== "" && 
-                       !(typeof cell === "number" && isNaN(cell));
-              })
-              .map((cell) => {
-                // Convert to string safely
-                if (cell === null || cell === undefined) return "";
-                return String(cell).trim();
-              })
-              .filter(header => header.length > 0); // Remove empty strings
+              .filter(
+                (cell) => cell !== null && cell !== undefined && cell !== "",
+              )
+              .map((cell) => String(cell).trim())
+              .filter((header) => header.length > 0);
+
+            // get the preview data
+            preview = jsonData.slice(1, 4).map((row: any) => {
+              return Object.fromEntries(
+                headers.map((header, index) => [header, row[index] || ""]),
+              );
+            });
           }
-        } else {
-          console.error("❌ Unsupported file type:", file.name);
-          alert(
-            `Unsupported file type: ${file.name}. Please upload CSV or Excel files.`,
-          );
-          return;
         }
 
-        // Log for debugging
-        
         setColumns(headers);
+        setPreviewData(preview);
 
-        // Auto detect common column names with safety checks
+        // Auto detect with tracking
+        const detected = new Set<keyof ColumnMappingType>();
         const autoMapping: ColumnMappingType = {
-          date:
-            headers.find(
-              (h) => h && (
-                h.toLowerCase().includes("date") ||
-                h.toLowerCase().includes("transaction date")
-              )
-            ) || (headers.length > 0 ? headers[0] : ""),
-
-          description:
-            headers.find(
-              (h) => h && (
-                h.toLowerCase().includes("desc") ||
-                h.toLowerCase().includes("description") ||
-                h.toLowerCase().includes("transaction") ||
-                h.toLowerCase().includes("details")
-              )
-            ) || (headers.length > 1 ? headers[1] : ""),
-
-          amount:
-            headers.find(
-              (h) => h && (
-                h.toLowerCase().includes("amount") ||
-                h.toLowerCase().includes("amt") ||
-                h.toLowerCase().includes("value") ||
-                h.toLowerCase().includes("price") ||
-                h.toLowerCase().includes("total")
-              )
-            ) || (headers.length > 2 ? headers[2] : ""),
-
-          type:
-            headers.find(
-              (h) => h && (
-                h.toLowerCase().includes("type") ||
-                h.toLowerCase().includes("category") ||
-                h.toLowerCase().includes("transaction type") ||
-                h.toLowerCase().includes("income/expense")
-              )
-            ) || (headers.length > 3 ? headers[3] : ""),
+          date: "",
+          description: "",
+          amount: "",
+          type: "",
         };
 
+        fieldConfig.forEach((field) => {
+          const match = headers.find(
+            (h) =>
+              h &&
+              field.keywords.some((keyword) =>
+                h.toLocaleLowerCase().includes(keyword),
+              ),
+          );
+
+          if (match) {
+            autoMapping[field.key] = match;
+            detected.add(field.key);
+          } else if (headers.length > 0) {
+            // fallback to position
+            const fallbackIndex = [
+              "date",
+              "description",
+              "amount",
+              "type",
+            ].indexOf(field.key);
+
+            if (headers[fallbackIndex]) {
+              autoMapping[field.key] = headers[fallbackIndex];
+            }
+          }
+        });
+
         setMapping(autoMapping);
+        setAutoDetected(detected);
       } catch (error) {
         console.error("❌ Error reading file:", error);
         alert(
@@ -146,6 +198,14 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
     value: string,
   ) => {
     setMapping((prev) => ({ ...prev, [field]: value }));
+    // remove from auto-detected if manually changed
+    if (autoDetected.has(field) && value !== mapping[field]) {
+      setAutoDetected((prev) => {
+        const next = new Set(prev);
+        next.delete(field);
+        return next;
+      });
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -153,13 +213,33 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
     onMappingComplete(mapping);
   };
 
+  const isFormValid = () => {
+    return Object.values(mapping).every((value) => value !== "");
+  };
+
   if (isLoading) {
     return (
-      <Card>
-        <CardContent className="p-8 text-center">
-          <div className="flex flex-col items-center justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Reading file: {file.name}...</p>
+      <Card className="border-0 shadow-xl overflow-hidden">
+        <CardContent className="p-12">
+          <div className="flex flex-col items-center justify-center space-y-6">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+              className="relative"
+            >
+              <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full" />
+              <motion.div
+                className="absolute inset-0 border-4 border-transparent border-t-purple-500 rounded-full"
+                animate={{ rotate: -360 }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+              />
+            </motion.div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-slate-900 mb-1">
+                Reading File
+              </p>
+              <p className="text-sm text-slate-600">{file.name}</p>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -169,138 +249,225 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
   // Handle empty columns
   if (columns.length === 0) {
     return (
-      <Card>
-        <CardContent className="p-6 text-center">
-          <div className="text-red-600 mb-4">
-            <svg
-              className="w-12 h-12 mx-auto"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+      >
+        <Card className="border-2 border-red-200 bg-red-50">
+          <CardContent className="p-8 text-center">
+            <motion.div
+              animate={{ rotate: [0, -10, 10, -10, 0] }}
+              transition={{ duration: 0.5, repeat: 3 }}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            Could not read file headers
-          </h3>
-          <p className="text-gray-600">
-            Please ensure the file has a header row and is in CSV or Excel
-            format.
-          </p>
-          <p className="text-sm text-gray-500 mt-2">File: {file.name}</p>
-          <Button
-            variant="outline"
-            className="mt-4"
-            onClick={() => window.location.reload()}
-          >
-            Try Again
-          </Button>
-        </CardContent>
-      </Card>
+              <AlertCircle className="w-16 h-16 text-red-600 mx-auto mb-4" />
+            </motion.div>
+            <h3 className="text-xl font-bold text-red-900 mb-2">
+              Could not read file headers
+            </h3>
+            <p className="text-red-700 mb-4">
+              Please ensure the file has a header row and is in CSV or Excel
+              format.
+            </p>
+            <p className="text-sm text-red-600 mb-6">File: {file.name}</p>
+            <Button
+              variant="outline"
+              className="border-red-300 text-red-700 hover:bg-red-100"
+              onClick={() => window.location.reload()}
+            >
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
+      </motion.div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Map Your Columns</CardTitle>
-        <p className="text-sm text-gray-600">
-          Please map your file columns to the required fields
-        </p>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Date Column
-              </label>
-              <select
-                value={mapping.date}
-                onChange={(e) => handleMappingChange("date", e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                required
-              >
-                <option value="">Select Column</option>
-                {columns.map((column, index) => (
-                  <option key={`date-${index}-${column}`} value={column}>
-                    {column}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Description Column
-              </label>
-              <select
-                value={mapping.description}
-                onChange={(e) =>
-                  handleMappingChange("description", e.target.value)
-                }
-                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                required
-              >
-                <option value="">Select column</option>
-                {columns.map((column, index) => (
-                  <option key={`desc-${index}-${column}`} value={column}>
-                    {column}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Amount Column
-              </label>
-              <select
-                value={mapping.amount}
-                onChange={(e) => handleMappingChange("amount", e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                required
-              >
-                <option value="">Select column</option>
-                {columns.map((column, index) => (
-                  <option key={`amount-${index}-${column}`} value={column}>
-                    {column}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Type Column (Income/Expense)
-              </label>
-              <select
-                value={mapping.type}
-                onChange={(e) => handleMappingChange("type", e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                required
-              >
-                <option value="">Select column</option>
-                {columns.map((column, index) => (
-                  <option key={`type-${index}-${column}`} value={column}>
-                    {column}
-                  </option>
-                ))}
-              </select>
-            </div>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <Card className="border-0 shadow-2xl overflow-hidden">
+        {/* Header with gradient */}
+        <div className="bg-linear-to-br from-blue-600 via-purple-600 to-cyan-600 p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <motion.div
+              animate={{
+                rotate: [0, 360],
+                scale: [1, 1.1, 1],
+              }}
+              transition={{
+                duration: 3,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
+            >
+              <Sparkles className="w-6 h-6 text-white" />
+            </motion.div>
+            <CardTitle className="text-white text-2xl font-bold">
+              Map Your Columns
+            </CardTitle>
           </div>
+          <p className="text-blue-100">
+            Match your file columns with the required files • {columns.length}{" "}
+            columns detected
+          </p>
+        </div>
 
-          <Button type="submit" className="w-full">
-            Process File
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+        <CardContent className="p-6">
+          {/* Auto detection column notice */}
+          {autoDetected.size > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 p-4 bg-green-50 border-2 border-green-200 rounded-xl"
+            >
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-green-600 " />
+                <p className="text-sm font-semibold text-green-900">
+                  Auto detected {autoDetected.size} field
+                  {autoDetected.size > 1 ? "s" : ""}
+                </p>
+              </div>
+              <p className="text-xs text-green-700 mt-1">
+                Smart matching found: {Array.from(autoDetected).join(", ")}
+              </p>
+            </motion.div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Field Mappings */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {fieldConfig.map((field, index) => {
+                const Icon = field.icon;
+                const isAutoDetected = autoDetected.has(field.key);
+
+                return (
+                  <motion.div
+                    key={field.key}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="group"
+                  >
+                    <div
+                      className={`relative p-4 rounded-xl border-2 transition-all ${
+                        mapping[field.key]
+                          ? `border-${field.color}-300 bg-${field.color}-50`
+                          : "border-slate-200 bg-white"
+                      }`}
+                    >
+                      {/* Auto detected badge */}
+                      {isAutoDetected && (
+                        <motion.div
+                          initial={{ scale: 0, rotate: -180 }}
+                          animate={{ scale: 1, rotate: 0 }}
+                          className="absolute -top-2 -right-2 z-10"
+                        >
+                          <div className="bg-green-500 text-white rounded-full p-1.5 shadow-lg">
+                            <Sparkles className="w-3 h-3" />
+                          </div>
+                        </motion.div>
+                      )}
+
+                      <div className="flex items-start gap-3 mb-3">
+                        <motion.div
+                          className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                            mapping[field.key]
+                              ? `bg-${field.color}-500 text-white`
+                              : "bg-slate-100 text-slate-400"
+                          }`}
+                          whileHover={{ rotate: 360 }}
+                          transition={{ duration: 0.6 }}
+                        >
+                          <Icon className="w-5 h-5" />
+                        </motion.div>
+                        <div className="flex-1">
+                          <label className="block text-sm font-bold text-slate-900 mb-1">
+                            {field.label}
+                          </label>
+                          <p className="text-xs text-slate-600">
+                            {field.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      <select
+                        value={mapping[field.key]}
+                        onChange={(e) =>
+                          handleMappingChange(field.key, e.target.value)
+                        }
+                        className={`w-full px-3 py-2.5 border-2 rounded-lg font-medium
+                          focus:ring-2 focus:ring-${field.color}-500 focus:border-${field.color}-500
+                          transition-all ${
+                            mapping[field.key]
+                              ? `border-${field.color}-300 bg-white`
+                              : "border-slate-300 bg-slate-50"
+                          }`}
+                        required
+                      >
+                        {columns.map((column, idx) => (
+                          <option key={`${field.key}-${idx}-${column}`}>
+                            {column}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Preview Data */}
+                      {mapping[field.key] && previewData.length > 0 && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          className="mt-3 pt-3 border-t border-slate-200"
+                        >
+                          <p className="text-xs font-semibold text-slate-600 mb-2">
+                            Preview:
+                          </p>
+                          <div className="space-y-1">
+                            {previewData.slice(0, 2).map((row, idx) => (
+                              <div
+                                key={idx}
+                                className="text-xs bg-white px-2 py-1 rounded border border-slate-200 truncate"
+                              >
+                                {row[mapping[field.key]] || (
+                                  <span className="text-slate-400 italic">
+                                    empty
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+
+            {/* Submit Button */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+            >
+              <Button
+                type="submit"
+                disabled={!isFormValid()}
+                className={`w-full h-14 text-lg font-bold shadow-lg transition-all ${
+                  isFormValid()
+                    ? "bg-linear-to-r from-blue-600 via-purple-600 to-cyan-600 hover:shadow-xl hover:scale-[1.02]"
+                    : "bg-slate-300 cursor-not-allowed"
+                }`}
+              >
+                <span>Process File</span>
+                <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
+            </motion.div>
+          </form>
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 };

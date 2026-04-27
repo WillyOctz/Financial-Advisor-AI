@@ -1,16 +1,13 @@
 "use client";
 
-import React from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import React, { useEffect } from "react";
+import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import {
   BarChart3,
   Target,
   TrendingUp,
   AlertCircle,
   CheckCircle,
-  XCircle,
 } from "lucide-react";
 import { AccuracyMetrics } from "@/types/financial";
 
@@ -18,173 +15,309 @@ interface ForecastAccuracyProps {
   metrics?: AccuracyMetrics;
 }
 
+// ------------------Animated Bar------------------
+const AnimatedBar = ({
+  value,
+  color,
+  delay = 0,
+}: {
+  value: number;
+  color: string;
+  delay?: number;
+}) => {
+  const w = useMotionValue(0);
+  const wp = useTransform(w, (v) => "${v}%");
+
+  useEffect(() => {
+    const ctrl = animate(w, Math.min(value, 100), {
+      duration: 1.2,
+      ease: [0.22, 1, 0.36, 1],
+      delay,
+    });
+    return ctrl.stop;
+  }, [value]);
+  return (
+    <div className="h-1.5 w-full rounded-full bg-slate-800/80 overflow-hidden">
+      <motion.div
+        className={`h-full rounded-full ${color}`}
+        style={{ width: wp }}
+      />
+    </div>
+  );
+};
+
+// ------------------Metric Cell------------------
+const MetricCell = ({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  iconColor,
+  delay,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  icon: React.ElementType;
+  iconColor: string;
+  delay: number;
+}) => (
+  <motion.div
+    initial={{ opacity: 0, y: 16 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.45, delay, ease: [0.22, 1, 0.36, 1] }}
+    className="relative overflow-hidden rounded-xl border border-slate-700/50 bg-linear-to-br from-slate-800/80 to-slate-900/80 p-4"
+  >
+    <motion.div className="absolute inset-0 bg-linear-to-br from-amber-500/5 to-transparent" />
+    <div className="flex items-start justify-between mb-3">
+      <span className="text-xs font-medium text-slate-400 uppercase tracking-widest">
+        {label}
+      </span>
+      <div className={`p-1.5 rounded-lg bg-slate-800`}>
+        <Icon className={`w-3.5 h-3.5 ${iconColor}`} />
+      </div>
+    </div>
+    <motion.p
+      className="text-2xl font-bold text-slate-100 tabular-nums"
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.5, delay: delay + 0.1, ease: "backOut" }}
+    >
+      {value}
+    </motion.p>
+    <p className="text-xs text-slate-500 mt-1">{sub}</p>
+  </motion.div>
+);
+
+const stagger = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.07 } },
+};
+const fadeUp = { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } };
+
 export const ForecastAccuracy: React.FC<ForecastAccuracyProps> = ({
   metrics,
 }) => {
   if (!metrics) {
     return (
-      <Card>
-        <CardContent className="p-8 text-center">
-          <p className="text-gray-500">Accuracy metrics not available</p>
-        </CardContent>
-      </Card>
+      <div className="rounded-2xl border border-slate-800/60 bg-slate-900/80 p-8 text-center">
+        <p className="text-slate-500 text-sm">Accuracy metrics not available</p>
+      </div>
     );
   }
 
-  const getAccuracyColor = (mape: number) => {
-    if (mape < 10) return "text-green-600";
-    if (mape < 20) return "text-yellow-600";
-    if (mape < 30) return "text-orange-600";
-    return "text-red-600";
+  const getMapeConfig = (mape: number) => {
+    if (mape < 10)
+      return {
+        color: "text-emerald-400",
+        bar: "bg-gradient-to-r from-emerald-500 to-teal-400",
+        icon: CheckCircle,
+        label: "Excellent",
+        desc: "Forecast is highly reliable for planning",
+      };
+    if (mape < 20)
+      return {
+        color: "text-amber-400",
+        bar: "bg-gradient-to-r from-amber-500 to-yellow-400",
+        icon: TrendingUp,
+        label: "Good",
+        desc: "Generally reliable for budget guidance",
+      };
+    if (mape < 30)
+      return {
+        color: "text-orange-400",
+        bar: "bg-gradient-to-r from-orange-500 to-amber-400",
+        icon: TrendingUp,
+        label: "Fair",
+        desc: "Use as guidance, not for precise planning",
+      };
+    return {
+      color: "text-red-400",
+      bar: "bg-gradient-to-r from-red-500 to-rose-400",
+      icon: AlertCircle,
+      label: "Low",
+      desc: "Consider collecting more historical data",
+    };
   };
 
-  const getAccuracyIcon = (mape: number) => {
-    if (mape < 10) return <CheckCircle className="h-5 w-5 text-green-600" />;
-    if (mape < 20) return <TrendingUp className="h-5 w-5 text-yellow-600" />;
-    return <AlertCircle className="h-5 w-5 text-red-600" />;
-  };
+  const conf = getMapeConfig(metrics.mape);
 
-  const getConfidenceBadgeColor = (confidence: string) => {
-    switch (confidence) {
-      case "high":
-        return "success";
-      case "medium":
-        return "warning";
-      case "low":
-        return "destructive";
-      default:
-        return "default";
-    }
-  };
+  const confBadge =
+    metrics.confidence === "high"
+      ? {
+          bg: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/30",
+          label: "HIGH CONFIDENCE",
+        }
+      : metrics.confidence === "medium"
+        ? {
+            bg: "bg-amber-500/10 text-amber-400 ring-amber-500/30",
+            label: "MEDIUM CONFIDENCE",
+          }
+        : {
+            bg: "bg-red-500/10 text-red-400 ring-red-500/30",
+            label: "LOW CONFIDENCE",
+          };
 
-  const getAccuracyDescription = (mape: number) => {
-    if (mape < 10) return "Excellent accuracy - forecast is highly reliable";
-    if (mape < 20) return "Good accuracy - forecast is generally reliable";
-    if (mape < 30) return "Fair accuracy - use forecast as guidance only";
-    return "Low accuracy - consider collecting more data";
-  };
+  const guides = [
+    {
+      color: "bg-emerald-400",
+      label: "MAPE < 10%",
+      desc: "Highly accurate, reliable for planning",
+    },
+    {
+      color: "bg-amber-400",
+      label: "MAPE 10–20%",
+      desc: "Good accuracy for general budget planning",
+    },
+    {
+      color: "bg-orange-400",
+      label: "MAPE 20–30%",
+      desc: "Guidance only, not precise planning",
+    },
+    {
+      color: "bg-red-400",
+      label: "MAPE > 30%",
+      desc: "Low accuracy — collect more historical data",
+    },
+  ];
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center space-x-2">
-          <Target className="h-5 w-5 text-blue-600" />
-          <span>Forecast Accuracy & Reliability</span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {/* Overall Accuracy */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              {getAccuracyIcon(metrics.mape)}
-              <span className="font-medium">Overall Accuracy</span>
-            </div>
-            <Badge variant={getConfidenceBadgeColor(metrics.confidence)}>
-              {metrics.confidence.toUpperCase()} CONFIDENCE
-            </Badge>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      className="rounded-2xl border border-slate-800/60 bg-slate-900/80 backdrop-blur-sm overflow-hidden"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-5 border-b border-slate-800/60">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-linear-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/25">
+            <Target className="w-5 h-5 text-white" />
           </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
+          <div>
+            <h3 className="text-base font-semibold text-slate-100">
+              Forecast Accuracy
+            </h3>
+            <p className="text-xs text-slate-500">Model reliability metrics</p>
+          </div>
+        </div>
+        <span
+          className={`text-xs font-semibold px-3 py-1.5 rounded-full ring-1 ${confBadge.bg}`}
+        >
+          {confBadge.label}
+        </span>
+      </div>
+
+      <div className="p-6 space-y-6">
+        {/* Overall MAPE */}
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          animate="visible"
+          className="space-y-3"
+        >
+          <motion.div
+            variants={fadeUp}
+            className="flex items-center justify-between"
+          >
+            <div className="flex items-center gap-2">
+              <conf.icon className={`w-4 h-4 ${conf.color}`} />
+              <span className="text-sm font-semibold text-slate-200">
+                Overall Accuracy
+              </span>
               <span
-                className={`font-semibold ${getAccuracyColor(metrics.mape)}`}
+                className={`text-xs px-2 py-0.5 rounded-full bg-slate-800 ${conf.color}`}
               >
-                Mean Absolute Percentage Error: {metrics.mape.toFixed(2)}%
+                {conf.label}
               </span>
-              <span className="text-gray-600">{metrics.interpretation}</span>
             </div>
-            <Progress
+            <span className={`text-2xl font-black tabular-nums ${conf.color}`}>
+              {metrics.mape.toFixed(2)}
+              <span className="text-sm font-normal text-slate-400 mt-0.5">
+                %
+              </span>
+            </span>
+          </motion.div>
+          <motion.div variants={fadeUp}>
+            <AnimatedBar
               value={100 - Math.min(metrics.mape, 100)}
-              className="h-2"
+              color={conf.bar}
+              delay={0.2}
             />
-            <p className="text-sm text-gray-600">
-              {getAccuracyDescription(metrics.mape)}
-            </p>
-          </div>
+          </motion.div>
+          <motion.p variants={fadeUp} className="text-xs text-slate-500">
+            {conf.desc}
+          </motion.p>
+        </motion.div>
+
+        {/* Metric Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <MetricCell
+            label="MAE"
+            value={`$${metrics.mae.toFixed(2)}`}
+            sub="Mean Absolute Error"
+            icon={BarChart3}
+            iconColor="text-blue-400"
+            delay={0}
+          />
+          <MetricCell
+            label="RMSE"
+            value={`$${metrics.rmse.toFixed(2)}`}
+            sub="Root Mean Square Error"
+            icon={TrendingUp}
+            iconColor="text-emerald-400"
+            delay={0.08}
+          />
+          <MetricCell
+            label="MDAPE"
+            value={`${metrics.mdape.toFixed(2)}%`}
+            sub="Median Abs % Error"
+            icon={TrendingUp}
+            iconColor="text-violet-400"
+            delay={0.16}
+          />
+          <MetricCell
+            label="Coverage"
+            value={`${metrics.coverage.toFixed(1)}%`}
+            sub="Confidence Coverage"
+            icon={Target}
+            iconColor="text-amber-400"
+            delay={0.24}
+          />
         </div>
 
-        {/* Detailed Metrics Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="p-3 bg-gray-50 rounded-lg border">
-            <div className="flex items-center space-x-2 mb-1">
-              <BarChart3 className="h-4 w-4 text-blue-500" />
-              <span className="text-sm font-medium text-gray-700">MAE</span>
-            </div>
-            <div className="text-lg font-bold">${metrics.mae.toFixed(2)}</div>
-            <p className="text-xs text-gray-500">Mean Absolute Error</p>
+        {/* Guide */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4, duration: 0.45 }}
+          className="rounded-xl border border-slate-700/40 bg-slate-800/40 p-4 space-y-3"
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-1 h-4 rounded-full bg-slate-500" />
+            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
+              Accuracy Reference
+            </h4>
           </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg border">
-            <div className="flex items-center space-x-2 mb-1">
-              <TrendingUp className="h-4 w-4 text-green-500" />
-              <span className="text-sm font-medium text-gray-700">RMSE</span>
-            </div>
-            <div className="text-lg font-bold">${metrics.rmse.toFixed(2)}</div>
-            <p className="text-xs text-gray-500">Root Mean Square Error</p>
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg border">
-            <div className="flex items-center space-x-2 mb-1">
-              <TrendingUp className="h-4 w-4 text-purple-500" />
-              <span className="text-sm font-medium text-gray-700">MDAPE</span>
-            </div>
-            <div className="text-lg font-bold">{metrics.mdape.toFixed(2)}%</div>
-            <p className="text-xs text-gray-500">
-              Median Absolute Percentage Error
-            </p>
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg border">
-            <div className="flex items-center space-x-2 mb-1">
-              <TrendingUp className="h-4 w-4 text-green-500" />
-              <span className="text-sm font-medium text-gray-700">
-                Coverage
-              </span>
-            </div>
-            <div className="text-lg font-bold">
-              {metrics.coverage.toFixed(1)}%
-            </div>
-            <p className="text-xs text-gray-500">Confidence Coverage</p>
-          </div>
-        </div>
-
-        {/* Accuracy Interpretation Guide */}
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <h4 className="font-semibold text-blue-800 mb-2">
-            Understanding Accuracy Metrics
-          </h4>
-          <ul className="space-y-2 text-sm text-blue-700">
-            <li className="flex items-start space-x-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full mt-1.5"></div>
-              <span>
-                <strong>MAE &lt; 10%</strong> Forecast is highly accurate and
-                realiable for planning
-              </span>
-            </li>
-            <li className="flex items-start space-x-2">
-              <div className="w-2 h-2 bg-yellow-500 rounded-full mt-1.5"></div>
-              <span>
-                <strong>MAE 10%-20%:</strong> Good accuracy, suitable for
-                general budget planning
-              </span>
-            </li>
-            <li className="flex items-start space-x-2">
-              <div className="w-2 h-2 bg-orange-500 rounded-full mt-1.5"></div>
-              <span>
-                <strong>MAE 20%-30%:</strong> Use forecast as guidance please,
-                not precise planning
-              </span>
-            </li>
-            <li className="flex items-start space-x-2">
-              <div className="w-2 h-2 bg-red-500 rounded-full mt-1.5"></div>
-              <span>
-                <strong>MAE &gt; 30%:</strong> Low accuracy, consider collecting
-                more historical data
-              </span>
-            </li>
-          </ul>
-        </div>
-      </CardContent>
-    </Card>
+          {guides.map(({ color, label, desc }, i) => (
+            <motion.div
+              key={label}
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.45 + i * 0.06, duration: 0.35 }}
+              className="flex items-start gap-3"
+            >
+              <div
+                className={`w-1.5 h-1.5 rounded-full ${color} mt-1.5 shrink-0`}
+              />
+              <p className="text-xs text-slate-400">
+                <span className="font-semibold text-slate-300">{label}</span>{" "}
+                {desc}
+              </p>
+            </motion.div>
+          ))}
+        </motion.div>
+      </div>
+    </motion.div>
   );
 };

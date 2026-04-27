@@ -1,202 +1,262 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "../../../contexts/AuthContexts";
-import { Button } from "@/components/ui/button";
-import Input from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Smartphone, Key, AlertCircle } from "lucide-react";
-import Link from "next/link";
+import { apiClient } from "@/lib/api/client";
+import { Shield, AlertTriangle, Loader2, ArrowLeft } from "lucide-react";
 
 export default function Verify2FAPage() {
+  const router = useRouter();
+
   const [code, setCode] = useState("");
   const [backupCode, setBackupCode] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
   const [useBackupCode, setUseBackupCode] = useState(false);
-  const router = useRouter();
-  const { partialToken, complete2FA, twoFAMethod } = useAuth();
+  const [partialToken, setPartialToken] = useState("");
+  const [method, setMethod] = useState<"app" | "email" | "sms" | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    if (!partialToken) {
+    // get partial token from localstorage
+    const token = localStorage.getItem("partial_token");
+    if (!token) {
       router.push("/login");
+      return;
     }
-  }, [partialToken, router]);
+    setPartialToken(token);
+  }, [router]);
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    setError("");
+
+    const codeToVerify = useBackupCode ? backupCode : code;
+
+    if (!codeToVerify) {
+      setError("Please enter a verification code");
+      return;
+    }
+
+    if (!useBackupCode && codeToVerify.length !== 6) {
+      setError("Code must be 6 digits");
+      return;
+    }
 
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API}/auth/verify-2fa`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            partial_token: partialToken,
-            code: useBackupCode ? "" : code,
-            backup_code: useBackupCode ? backupCode : "",
-          }),
-        }
-      );
+      setLoading(true);
+      setError("");
 
-      if (res.ok) {
-        const data = await res.json();
-        complete2FA(data.access_token, data.user);
+      const res = await apiClient.post("/auth/verify-2fa", {
+        partial_token: partialToken,
+        code: useBackupCode ? undefined : codeToVerify,
+        backup_code: useBackupCode ? codeToVerify : undefined,
+      });
+
+      // store the full access token
+      const { access_token, user } = res.data;
+
+      // save to localstorage and cookies
+      localStorage.setItem("token", access_token);
+      localStorage.setItem("user", JSON.stringify(user));
+      document.cookie = `token=${access_token}; path=/; max-age=${30 * 24 * 60 * 60}`;
+
+      // clear partial token
+      localStorage.removeItem("partial_token");
+
+      setSuccess("Verification successful! Redirecting...");
+
+      // redirect to dashboard
+      setTimeout(() => {
         router.push("/dashboard");
-      } else {
-        const errorData = await res.json();
-        setError(errorData.detail || "Verification failed");
-      }
-    } catch (error) {
-      setError("Network error. Please try again.");
+      }, 1000);
+    } catch (err: any) {
+      setError(
+        err.response?.data?.detail ||
+          "Invalid verification code. Please try again.",
+      );
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  if (!partialToken) {
-    return null;
-  }
+  const handleResendCode = async () => {
+    try {
+      setResendLoading(true);
+      setError("");
+
+      await apiClient.post("/auth/resend-2fa-code", {
+        partial_token: partialToken,
+      });
+
+      setSuccess("New code sent! Check your email/phone.");
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (err: any) {
+      setError(
+        err.response?.data?.detail ||
+          "Failed to resend code. Please try logging in again.",
+      );
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  const handleBackToLogin = () => {
+    localStorage.removeItem("partial_token");
+    router.push("/login");
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => router.push("/login")}
-              className="flex items-center gap-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to Login
-            </Button>
-            <CardTitle className="flex items-center gap-2">
-              <Key className="h-5 w-5" />
-              Two-Factor Verification
-            </CardTitle>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="max-w-md w-full">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+            <Shield className="w-8 h-8 text-blue-600" />
           </div>
-          <p className="text-sm text-gray-600 mt-2">
-            {twoFAMethod === "sms"
-              ? "Enter the code sent to your phone"
-              : "Enter the code from your authenticator app"}
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Two-Factor Authentication
+          </h1>
+          <p className="text-gray-600">
+            Enter the verification code to complete your login
           </p>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleVerify} className="space-y-4">
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <p className="text-sm text-red-800">{error}</p>
+          </div>
+        )}
+
+        {/* Success Message */}
+        {success && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-sm text-green-800">{success}</p>
+          </div>
+        )}
+
+        {/* Verification Form */}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <form onSubmit={handleVerify}>
             {!useBackupCode ? (
               <>
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Verification Code
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    6-Digit Verification Code
                   </label>
-                  <Input
+                  <input
                     type="text"
                     value={code}
                     onChange={(e) =>
                       setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
                     }
-                    placeholder="123456"
-                    className="text-center text-lg tracking-widest"
+                    placeholder="000000"
                     maxLength={6}
+                    className="w-full px-4 py-3 text-2xl tracking-widest text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono"
                     autoFocus
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Enter the 6-digit code from your authenticator app
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    Enter the code from your authenticator app, email, or SMS
                   </p>
                 </div>
 
-                <div className="text-center">
-                  <Button
+                {/* Resend Code Button */}
+                <div className="mb-6 text-center">
+                  <button
                     type="button"
-                    variant="link"
-                    className="text-sm"
-                    onClick={() => setUseBackupCode(true)}
+                    onClick={handleResendCode}
+                    disabled={resendLoading}
+                    className="text-sm text-blue-600 hover:text-blue-700 disabled:text-gray-400"
                   >
-                    Use the backup code instead
-                  </Button>
+                    {resendLoading
+                      ? "Sending..."
+                      : "Didn't receive a code? Resend"}
+                  </button>
                 </div>
               </>
             ) : (
               <>
-                <div>
-                  <label className="block text-sm font-medium mb-1">
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Backup Code
                   </label>
-                  <Input
+                  <input
                     type="text"
                     value={backupCode}
                     onChange={(e) =>
-                      setBackupCode(e.target.value.toUpperCase())
+                      setBackupCode(
+                        e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""),
+                      )
                     }
-                    placeholder="A1B2-C3D4"
-                    className="text-center font-mono"
+                    placeholder="XXXXXXXX"
+                    className="w-full px-4 py-3 text-xl tracking-wider text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono"
                     autoFocus
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Enter one of your 8-character backup codes
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    Enter one of your backup codes
                   </p>
-                </div>
-
-                <div className="text-center">
-                  <Button
-                    type="button"
-                    variant="link"
-                    className="text-sm"
-                    onClick={() => setUseBackupCode(false)}
-                  >
-                    Use authenticator app instead
-                  </Button>
                 </div>
               </>
             )}
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <Button
+            {/* Submit Button */}
+            <button
               type="submit"
-              disabled={
-                isLoading ||
-                (!useBackupCode && code.length !== 6) ||
-                (useBackupCode && !backupCode)
-              }
-              className="w-full"
+              disabled={loading || (!code && !backupCode)}
+              className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-medium"
             >
-              {isLoading ? "Verifying..." : "Verify & Continue"}
-            </Button>
-
-            <div className="text-center text-sm text-gray-600">
-              <p className="mb-2">Having Trouble?</p>
-              <div className="space-x-4">
-                <Link
-                  href="/reset-2fa"
-                  className="text-blue-600 hover:text-blue-600"
-                >
-                  Lost access to 2FA?
-                </Link>
-                <Link
-                  href="/reset-2fa"
-                  className="text-blue-600 hover:text-blue-600"
-                >
-                  Get help
-                </Link>
-              </div>
-            </div>
+              {loading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                "Verify & Continue"
+              )}
+            </button>
           </form>
-        </CardContent>
-      </Card>
+
+          {/* Toggle Backup Code */}
+          <div className="mt-6 pt-6 border-t">
+            <button
+              type="button"
+              onClick={() => {
+                setUseBackupCode(!useBackupCode);
+                setCode("");
+                setBackupCode("");
+                setError("");
+              }}
+              className="w-full text-sm text-gray-600 hover:text-gray-900"
+            >
+              {useBackupCode
+                ? "Use verification code instead"
+                : "Lost access? Use a backup code"}
+            </button>
+          </div>
+
+          {/* Back to Login */}
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={handleBackToLogin}
+              className="w-full text-sm text-gray-500 hover:text-gray-700 flex items-center justify-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to login
+            </button>
+          </div>
+        </div>
+
+        {/* Security Notice */}
+        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-xs text-blue-800">
+            <strong>Security Tip:</strong> Never share your verification codes
+            with anyone. We will never ask for your 2FA code.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

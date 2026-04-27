@@ -8,18 +8,55 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
+  ReferenceLine,
   Area,
+  AreaChart,
 } from "recharts";
+import { motion } from "framer-motion";
 import { ForecastResponse } from "@/types/financial";
 import { formatCurrency, formatDate } from "@/lib/utils/formatters";
+import { TrendingUp } from "lucide-react";
 
 interface ForecastChartProps {
   forecast: ForecastResponse;
   title?: string;
   height?: number;
 }
+
+const CustomToolTip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.92, y: 6 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      className="rounded-xl border border-slate-700/60 bg-slate-900/95 backdrop-blur-sm p-4 shadow-2xl shadow-black/40 min-w-[180px]"
+    >
+      <p className="text-xs text-slate-400 uppercase tracking-widest mb-3">
+        {formatDate(label, "long")}
+      </p>
+      <div className="space-y-2">
+        {payload.map((entry: any, i: number) => (
+          <div className="flex items-center justify-between gap-4" key={i}>
+            <div className="flex items-center gap-2">
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ background: entry.color }}
+              />
+              <span className="text-xs text-slate-400">{entry.name}</span>
+            </div>
+            <span
+              className="text-sm font-bold tabular-nums"
+              style={{ color: entry.color }}
+            >
+              {formatCurrency(entry.value)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </motion.div>
+  );
+};
 
 export const ForecastChart: React.FC<ForecastChartProps> = ({
   forecast,
@@ -29,100 +66,127 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
   const chartData = forecast.dates.map((date, index) => ({
     date,
     forecast: forecast.values[index],
-    upper: forecast.confidence_upper[index],
-    lower: forecast.confidence_lower[index],
+    upper_bound: forecast.confidence_upper[index],
+    lower_bound: forecast.confidence_lower[index],
   }));
 
-  const CustomToolTip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-white p-4 border border-gray-300 rounded-lg shadow-lg">
-          <p className="font-semibold text-gray-800">
-            {formatDate(label, "long")}
-          </p>
-          <p className="text-blue-600">
-            Forecast: {formatCurrency(payload[0].value)}
-          </p>
-          <p className="text-green-600 text-sm">
-            Upper: {formatCurrency(payload[1].value)}
-          </p>
-          <p className="text-red-600 text-sm">
-            Lower: {formatCurrency(payload[2].value)}
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      className="w-full rounded-2xl border border-slate-800/60 bg-slate-900/80 backdrop-blur-sm p-6"
+    >
+      {/* Title */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-9 h-9 rounded-xl bg-linear-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/25">
+          <TrendingUp className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <h3 className="text-base font-semibold text-slate-100">{title}</h3>
+          <p className="text-xs text-slate-500">
+            {forecast.dates.length} periods · confidence band shown
           </p>
         </div>
-      );
-    }
-    return null;
-  };
+      </div>
 
-  return (
-    <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">{title}</h3>
-      <div style={{ height: `${height}px`, minHeight: '400px' }}>
-        <ResponsiveContainer height="100%" width="100%" minHeight={400}>
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+      {/* Legend */}
+      <div className="flex items-center gap-5 mb-4">
+        {[
+          { color: "#f59e0b", label: "Forecast", dash: false },
+          { color: "#10b981", label: "Upper Bound", dash: true },
+          { color: "#f43f5e", label: "Lower Bound", dash: true },
+        ].map(({ color, label, dash }) => (
+          <div key={label} className="flex items-center gap-2">
+            <svg width="20" height="10">
+              <line
+                x1="0"
+                y1="5"
+                x2="20"
+                y2="5"
+                stroke={color}
+                strokeWidth="2"
+                strokeDasharray={dash ? "4 3" : undefined}
+              />
+            </svg>
+            <span className="text-xs text-slate-400">{label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ height }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart
+            data={chartData}
+            margin={{ top: 8, right: 12, left: 8, bottom: 0 }}
+          >
+            <defs>
+              <linearGradient id="forecastGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.15} />
+                <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.15} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="#1e293b"
+              vertical={false}
+            />
             <XAxis
               dataKey="date"
-              tickFormatter={(value) => formatDate(value, "short")}
-              stroke="#6b7280"
-              fontSize={12}
+              tickFormatter={(v) => formatDate(v, "short")}
+              stroke="#334155"
+              tick={{ fill: "#64748b", fontSize: 11 }}
+              axisLine={{ stroke: "#1e293b" }}
+              tickLine={false}
             />
             <YAxis
-              tickFormatter={(value) => formatCurrency(value)}
-              stroke="#6b7280"
-              fontSize={12}
+              tickFormatter={(v) => formatCurrency(v)}
+              stroke="#334155"
+              tick={{ fill: "#64748b", fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+              width={72}
             />
-            <Tooltip content={<CustomToolTip />} />
-            <Legend />
-
-            {/* Confidence interval area */}
-            <Area
+            <Tooltip
+              content={<CustomToolTip />}
+              cursor={{ stroke: "#334155", strokeWidth: 1 }}
+            />
+            <Line
               type="monotone"
-              dataKey="upper"
-              stroke="transparent"
-              fill="#10b981"
-              fillOpacity={0.1}
+              dataKey="upper_bound"
+              stroke="#10b981"
+              strokeWidth={2}
+              strokeDasharray="5 4"
+              dot={false}
+              name="Upper Bound"
+              connectNulls={true}
             />
-            <Area
+            <Line
               type="monotone"
-              dataKey="lower"
-              stroke="transparent"
-              fill="#ef4444"
-              fillOpacity={0.1}
+              dataKey="lower_bound"
+              stroke="#f43f5e"
+              strokeWidth={2}
+              strokeDasharray="5 4"
+              dot={false}
+              name="Lower Bound"
+              connectNulls={true}
             />
-
-            {/* Main forecast line */}
             <Line
               type="monotone"
               dataKey="forecast"
-              stroke="#3b82f6"
-              strokeWidth={3}
-              dot={{ fill: "#3b82f6", strokeWidth: 2, r: 4 }}
-              activeDot={{ r: 6, fill: "#1d4ed8" }}
-              name="Forecast"
-            />
-
-            {/* Confidence bounds */}
-            <Line
-              type="monotone"
-              dataKey="upper"
-              stroke="#10b981"
-              strokeWidth={1}
-              strokeDasharray="3 3"
-              name="Upper Bound"
-            />
-            <Line
-              type="monotone"
-              dataKey="lower"
-              stroke="#ef4444"
-              strokeWidth={1}
-              strokeDasharray="3 3"
-              name="Lower Bound"
+              stroke="#f59e0b"
+              strokeWidth={2.5}
+              dot={{ fill: "#f59e0b", strokeWidth: 0, r: 3 }}
+              activeDot={{
+                r: 6,
+                fill: "#f59e0b",
+                stroke: "#0a0d14",
+                strokeWidth: 2,
+              }}
             />
           </LineChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </motion.div>
   );
 };
