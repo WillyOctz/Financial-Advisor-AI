@@ -1,4 +1,4 @@
-## FINANCIAL ADVISOR AI PRODUCTION GRADE LEVEL Version 2.0 (Still Ongoing)
+## FINANCIAL ADVISOR AI PRODUCTION GRADE LEVEL Version 1.0 (Tested Verified)
 
 #
 ## Getting started to test 
