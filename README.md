@@ -42,7 +42,7 @@ This project combines data processing, machine learning, and LLM-based advisory 
 - Embeddings: HuggingFace
 
 ### Infrastructure
-- Supabase (storage)
+- Supabase (Database)
 - Docker
 - Upstash (Redis)
 - Render (Backend)
