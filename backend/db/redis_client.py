@@ -18,10 +18,13 @@ import threading
 import numpy as np
 import pandas as pd
 import traceback
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+redis_client = redis.Redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 
 # =============================================================================
 # CIRCUIT BREAKER IMPLEMENTATION

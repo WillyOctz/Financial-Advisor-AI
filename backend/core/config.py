@@ -5,6 +5,7 @@ import os
 class Settings(BaseSettings):
     # Database
     DB_URL: str = ""
+    LOCAL_DB_URL: str = ""
 
     # LLM
     GOOGLE_API_KEY: str = ""

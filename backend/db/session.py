@@ -5,11 +5,14 @@ from sqlalchemy.pool import QueuePool, NullPool
 from backend.core.config import settings
 import logging
 import os
+from dotenv import load_dotenv
 import threading
 from contextlib import contextmanager
 from threading import local
 
 from backend.models.database import CategoryMapping
+
+load_dotenv()
 
 # configure the logging
 logging.basicConfig()
@@ -43,7 +46,7 @@ class DatabaseSessionManager:
     
     def initialize(self):
         """initialize connection pool and session factory"""
-        database_url = os.getenv("DB_URL", settings.DB_URL)
+        database_url = os.getenv("DB_URL")
         if not database_url:
             raise ValueError("DB_URL environment variable not set")
         
