@@ -56,7 +56,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
-  const { login, requires2FA, partialToken } = useAuth();
+  const { login } = useAuth();
 
   // 3D card tilt
   const cardX = useMotionValue(0);
@@ -77,13 +77,6 @@ export default function LoginPage() {
     cardY.set(0);
   };
 
-  // if already in 2fa flow, redirect to verify-2fa page
-  useEffect(() => {
-    if (requires2FA && partialToken) {
-      router.push("/verify-2fa");
-    }
-  }, [requires2FA, partialToken, router]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -101,23 +94,15 @@ export default function LoginPage() {
       if (res.ok) {
         const data = await res.json();
 
-        if (data.requires_2fa) {
+        if (data.requires_2fa && data.partial_token) {
           // 2fa required
-          login(data.partial_token, {
-            id: 0,
-            email,
-            first_name: "",
-            last_name: "",
-            created_at: new Date().toISOString(),
-            is_verified: true,
-            is_active: true,
-            two_factor_method: data.method,
-          });
-          data.partial_token; // pass it as partial token parameter
-        } else {
+          login(data.partial_token, data.user, true);
+        } else if (data.access_token) {
           // no 2fa required
-          login(data.access_token, data.user);
+          login(data.access_token, data.user, true);
           router.push("/dashboard");
+        } else {
+          setError("Invalid response from server");
         }
       } else {
         const errorData = await res.json();

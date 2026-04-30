@@ -27,6 +27,12 @@ typing-extensions>=4.0.0
 # Pydantic
 pydantic>=2.7.0
 pydantic-settings>=2.3.0
+email-validator==2.1.0
+
+# email
+aiosmtplib==3.0.1
+pyotp
+qrcode
 
 # Document Processing
 PyPDF2==3.0.1
@@ -66,12 +72,12 @@ numpy-financial==1.0.0
 # HTTP and CORS
 httpx==0.26.0
 python-jose[cryptography]==3.3.0
+aiofiles==23.2.1
 
 # Testing
 pytest==7.4.4
 pytest-asyncio==0.23.3
 pytest-cov==4.1.0
-httpx==0.26.0
 
 # Development
 black==23.12.1
@@ -81,6 +87,7 @@ mypy==1.8.0
 # Authentication
 python-jose[cryptography]==3.3.0
 argon2-cffi
+passlib==1.7.4
 python-multipart==0.0.6
 
 # Cloud object storage

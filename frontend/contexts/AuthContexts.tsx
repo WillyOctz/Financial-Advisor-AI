@@ -19,7 +19,7 @@ interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (token: string, user: User) => void;
+  login: (token: string, user: User, is2FA: boolean) => void;
   logout: () => void;
   isLoading: boolean;
   token: string | null;
@@ -99,27 +99,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setTwoFAMethod(null);
   };
 
-  const login = (newToken: string, userData: User, partialToken?: string) => {
-    if (partialToken) {
-      // This is 2fa flow
-      Cookies.set("partial_token", partialToken, COOKIE_OPTIONS);
-      localStorage.setItem("partial_token", partialToken);
-      setPartialToken(partialToken);
+  const login = (tokenOrPartial: string, userData: User, is2FA: boolean = false) => {
+    if (is2FA) {
+      // 2FA flow - storing partial token
+      Cookies.set("partial_token", tokenOrPartial, COOKIE_OPTIONS);
+      localStorage.setItem("partial_token", tokenOrPartial);
+      localStorage.setItem("2fa_method", userData.two_factor_method || "app");
+
+      setPartialToken(tokenOrPartial);
       setRequires2FA(true);
       setTwoFAMethod(userData.two_factor_method || "app");
 
-      // Redirect to 2FA verification page
-      router.push("/verify-2fa");
       return;
     }
 
     // Regular login (without 2fa)
-    Cookies.set("token", newToken, COOKIE_OPTIONS);
+    Cookies.set("token", tokenOrPartial, COOKIE_OPTIONS);
     Cookies.set("user", JSON.stringify(userData), COOKIE_OPTIONS);
-    localStorage.setItem("token", newToken);
+    localStorage.setItem("token", tokenOrPartial);
     localStorage.setItem("user", JSON.stringify(userData));
 
-    setToken(newToken);
+    setToken(tokenOrPartial);
     setUser(userData);
     setRequiresVerification(!userData.is_verified);
     setRequires2FA(false);

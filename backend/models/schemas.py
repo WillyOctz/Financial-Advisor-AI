@@ -348,3 +348,12 @@ class UserPreferencesResponse(BaseModel):
     
     class Config:
         from_attributes = True
+        
+class TwoFactorLoginResponse(BaseModel):
+    """Response when 2FA is required during login"""
+    partial_token: str
+    token_type: str
+    user: UserResponse
+    requires_2fa: bool
+    method: str
+    message: str

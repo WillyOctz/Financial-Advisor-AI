@@ -1,5 +1,15 @@
 import axios from "axios";
 
+export interface LoginResponse {
+  access_token?: string;
+  partial_token?: string;
+  token_type: string;
+  user: UserResponse;
+  requires_2fa?: boolean;
+  method?: string;
+  message?: string;
+}
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API || "http://localhost:8000/api/v1";
 

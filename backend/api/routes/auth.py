@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from typing import Dict, Any
+from typing import Dict, Any, Union
 from datetime import timedelta, datetime
 from backend.db.session import get_db
 from backend.services.auth_service import AuthService, SECRET_KEY, ALGORITHM
@@ -10,7 +10,7 @@ from backend.models.database import User
 from backend.models.schemas import (
     UserCreate, UserLogin, Token, UserResponse, 
     VerificationConfirm, ResendVerification, ForgotPasswordRequest, 
-    ResetPasswordRequest, PasswordResetConfirm, TwoFactorVerifyRequest
+    ResetPasswordRequest, TwoFactorLoginResponse, TwoFactorVerifyRequest
 )
 from jose import JWTError, jwt
 from slowapi import Limiter
@@ -195,7 +195,7 @@ def verify_reset_token(token: str, db: Session = Depends(get_db)) -> Dict[str, A
     return {"valid": True, "email": user.email}
     
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=Union[Token, TwoFactorLoginResponse])
 @limiter.limit("10/minute")
 async def login(request: Request, login_data: UserLogin, db: Session = Depends(get_db)):
     auth_service = AuthService(db)
@@ -229,12 +229,18 @@ async def login(request: Request, login_data: UserLogin, db: Session = Depends(g
             
     # check if 2fa is enabled
     if user.two_factor_enabled:
+        # generate partial token
+        partial_token = auth_service.create_access_token(
+            data={
+                "sub": user.email,
+                "user_id": user.id,
+                "requires_2fa": True
+            },
+            expires_delta = timedelta(minutes=10)
+        )
         
         # for email/sms methods, send otp first
         if user.two_factor_method in ['email', 'sms']:
-            # Clear any existing rate limit to ensure OTP can be sent during login
-            auth_service.otp_service.clear_rate_limit(user.id, purpose="2fa_login")
-            
             # Send OTP (uses default "2fa_login" purpose)
             otp_sent = await auth_service.send_2fa_otp(user)
             
@@ -243,33 +249,26 @@ async def login(request: Request, login_data: UserLogin, db: Session = Depends(g
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to send verification code. Please try again."
                 )
-                 
-        # return a token that used for 2fa authentication
-        partial_token = auth_service.create_access_token(
-            data={"sub": user.email, "user_id": user.id, "requires_2fa": True, "type": "partial_token"},
-            expires_delta=timedelta(minutes=10) # expire for 2fa
-        )
         
-        return {
-            "requires_2fa": True,
-            "token_type": "bearer",
-            "user": UserResponse.from_orm(user),
-            "partial_token": partial_token,
-            "message": f"2FA verification required. check your {user.two_factor_method}",
-            "method": user.two_factor_method
-        }
+        return TwoFactorLoginResponse(
+            partial_token=partial_token,
+            token_type="bearer",
+            user=UserResponse.from_orm(user),
+            requires_2fa=True,
+            method=user.two_factor_method,
+            message=f"2FA verification required. Check your {user.two_factor_method}"
+        )
         
     # regular login from access token
     access_token = auth_service.create_access_token(
         data={"sub": user.email, "user_id": user.id, "requires_2fa": False, "type": "access_token"}
     )
 
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": UserResponse.from_orm(user),
-        "requires_2fa": False
-    }
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        user=UserResponse.from_orm(user)
+    )
 
 @router.post("/verify-2fa")
 @limiter.limit("5/minute")

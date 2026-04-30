@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     REDIS_SSL: bool = False
 
     # CORS
-    ALLOWED_ORIGINS: list = ["http://localhost:8501", "http://127.0.0.1:8501", "http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000", "http://127.0.0.1:8000"]
+    ALLOWED_ORIGINS: list = ["http://localhost:8501", "http://127.0.0.1:8501", "http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000", "http://127.0.0.1:8000", "https://financial-advisor-ai-lilac.vercel.app/" , "https://octz-financial-advisor-ai.hf.space/"]
 
     # Embedding Model
     QDRANT_URL: str = "http://localhost:6333"
