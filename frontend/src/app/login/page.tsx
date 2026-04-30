@@ -100,7 +100,7 @@ export default function LoginPage() {
           router.push("/verify-2fa")
         } else if (data.access_token) {
           // no 2fa required
-          login(data.access_token, data.user, true);
+          login(data.access_token, data.user, false);
           router.push("/dashboard");
         } else {
           setError("Invalid response from server");
