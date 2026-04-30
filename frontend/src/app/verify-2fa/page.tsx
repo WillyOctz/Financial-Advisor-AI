@@ -21,11 +21,17 @@ export default function Verify2FAPage() {
   useEffect(() => {
     // get partial token from localstorage
     const token = localStorage.getItem("partial_token");
+    const storedMethod = localStorage.getItem("2fa_method") as "app" | "email" | "sms" | null;
+
     if (!token) {
       router.push("/login");
       return;
     }
     setPartialToken(token);
+
+    if (storedMethod) {
+      setMethod(storedMethod)
+    }
   }, [router]);
 
   const handleVerify = async (e: React.FormEvent) => {

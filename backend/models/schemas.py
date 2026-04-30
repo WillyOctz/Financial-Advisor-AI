@@ -150,6 +150,9 @@ class VerificationConfirm(BaseModel):
 
 class ResendVerification(BaseModel):
     email: EmailStr
+    
+class ResendTwoFactorRequest(BaseModel):
+    partial_token: str
 
 class Token(BaseModel):
     access_token: str
@@ -357,3 +360,4 @@ class TwoFactorLoginResponse(BaseModel):
     requires_2fa: bool
     method: str
     message: str
+    

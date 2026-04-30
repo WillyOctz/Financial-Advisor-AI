@@ -10,7 +10,7 @@ from backend.models.database import User
 from backend.models.schemas import (
     UserCreate, UserLogin, Token, UserResponse, 
     VerificationConfirm, ResendVerification, ForgotPasswordRequest, 
-    ResetPasswordRequest, TwoFactorLoginResponse, TwoFactorVerifyRequest
+    ResetPasswordRequest, TwoFactorLoginResponse, TwoFactorVerifyRequest, ResendTwoFactorRequest
 )
 from jose import JWTError, jwt
 from slowapi import Limiter
@@ -360,14 +360,14 @@ async def verify_two_factor(
 @limiter.limit("3/minute")
 async def resend_2fa_code(
     request: Request,
-    partial_token: str,
+    data: ResendTwoFactorRequest,
     db: Session = Depends(get_db)
 ):
     """Resend 2fa OTP Code"""
     auth_service = AuthService(db)
     
     try:
-        payload = jwt.decode(partial_token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(data.partial_token, SECRET_KEY, algorithms=[ALGORITHM])
         
         if not payload.get("requires_2fa"):
             raise HTTPException(
@@ -395,7 +395,7 @@ async def resend_2fa_code(
         auth_service.otp_service.clear_rate_limit(user.id, purpose="2fa_login")
         
         # send new OTP (uses default "2fa_login" purpose)
-        otp_sent = await auth_service.send_2fa_otp(user)
+        otp_sent = await auth_service.send_2fa_otp(user, purpose="2fa_login")
         
         if not otp_sent:
             raise HTTPException(
