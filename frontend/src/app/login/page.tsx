@@ -97,6 +97,7 @@ export default function LoginPage() {
         if (data.requires_2fa && data.partial_token) {
           // 2fa required
           login(data.partial_token, data.user, true);
+          router.push("/verify-2fa")
         } else if (data.access_token) {
           // no 2fa required
           login(data.access_token, data.user, true);

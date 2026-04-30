@@ -228,7 +228,7 @@ async def login(request: Request, login_data: UserLogin, db: Session = Depends(g
             )
             
     # check if 2fa is enabled
-    if user.two_factor_enabled:
+    if user.two_factor_enabled and user.two_factor_method:
         # generate partial token
         partial_token = auth_service.create_access_token(
             data={
