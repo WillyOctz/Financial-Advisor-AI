@@ -171,7 +171,7 @@ export default function RegisterPage() {
 
         if (loginRes.ok) {
           const data = await loginRes.json();
-          login(data.access_token, data.user);
+          login(data.access_token, data.user, true);
           router.push("/dashboard");
         } else {
           router.push("/login");
