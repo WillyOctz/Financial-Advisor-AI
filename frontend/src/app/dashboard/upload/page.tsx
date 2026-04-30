@@ -104,7 +104,7 @@ export default function UploadPage() {
       color: "emerald",
       gradient: "from-emerald-500 to-teal-500",
       bgGradient: "from-emerald-50 to-teal-50",
-      onClick: downloadExcelTemplate,
+      onclick: downloadExcelTemplate,
     },
     {
       name: "JSON",
@@ -113,7 +113,7 @@ export default function UploadPage() {
       color: "purple",
       gradient: "from-purple-500 to-pink-500",
       bgGradient: "from-purple-50 to-pink-50",
-      onClick: downloadJSONTemplate,
+      onclick: downloadJSONTemplate,
     },
   ];
 
