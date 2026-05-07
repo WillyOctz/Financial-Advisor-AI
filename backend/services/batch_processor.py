@@ -16,6 +16,7 @@ import logging
 import hashlib
 import asyncio
 import time
+import torch
 import gc
 import psutil
 import os
@@ -228,6 +229,68 @@ class BatchProcessor:
         elif memory_percent < 60 and self.memory_pressure_mode:
             self.memory_pressure_mode = False
             logger.info(f"Exiting memory pressure mode ({memory_percent}%)")
+            
+    # =========================================================================
+    # CLEANUP OPTIMIZE MANAGEMENT
+    # =========================================================================
+    def _cleanup_memory(self):
+        """
+        Aggressive memory cleanup - call after processing operations.
+        Safe for 16GB servers.
+        """
+        try:
+            logger.debug("🧹 Starting memory cleanup...")
+        
+            # 1. Clear any cached temporary data
+            if hasattr(self, '_temp_data'):
+                del self._temp_data
+        
+            # 2. Force Python garbage collection (all generations)
+            collected = gc.collect(generation=2)
+        
+            # 3. Clear PyTorch CUDA cache if available
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+        
+            # 4. Log memory status (optional, remove if too verbose)
+            memory = psutil.virtual_memory()
+            logger.debug(f"   Memory: {memory.percent:.1f}% used, {memory.available / (1024**3):.2f}GB free")
+        
+        except Exception as e:
+            logger.warning(f"Memory cleanup warning: {e}")
+ 
+    def _cleanup_dataframe(self, df):
+        """
+        Clean up DataFrame from memory.
+        Call this after you're done with a DataFrame.
+        """
+        try:
+            if df is not None:
+                # Clear the dataframe
+                df = None
+                del df
+                gc.collect(generation=0)
+        except Exception as e:
+            logger.warning(f"DataFrame cleanup warning: {e}")
+ 
+    def _periodic_cleanup(self):
+        """
+        Lighter cleanup for periodic use during long operations.
+        Call every N batches (e.g., every 5-10 batches).
+        """
+        try:
+            # Just generation 0 (fastest)
+            gc.collect(generation=0)
+        
+            # Only clear CUDA cache if memory is high
+            if torch.cuda.is_available():
+                memory = psutil.virtual_memory()
+                if memory.percent > 80:
+                    torch.cuda.empty_cache()
+                
+        except Exception as e:
+            logger.warning(f"Periodic cleanup warning: {e}")
             
     # =========================================================================
     # RATE LIMITING
@@ -485,6 +548,9 @@ class BatchProcessor:
             except Exception as e:
                 logger.error(f"Transaction processing failed: {e}")
                 raise
+            
+            finally:
+                self._cleanup_memory()
                     
     async def bulk_insert_with_retry(self, data: List[Dict], model_class: Any, batch_size: int = 500, max_retries: int = 3) -> int:
         """Bulk insert with rate limiting"""
@@ -795,6 +861,7 @@ class BatchProcessor:
                 embeddings.append([0.0] * 128)
                 
         return embeddings
+    
     
     def calculate_embedding_batch_size(self, total_texts: int) -> int:
         """Calculate optimal embedding batch size based on rate limiting"""

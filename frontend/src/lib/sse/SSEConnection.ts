@@ -34,6 +34,10 @@ export class SSEConnection {
   private lastHeartbeat = 0;
   private heartbeatCheckInterval: NodeJS.Timeout | null = null;
 
+  // optimization reduced heartbeat frequency read
+  private readonly HEARTBEAT_TIMEOUT_MS = 60000;
+  private readonly HEARTBEAT_CHECK_INTERVAL_MS = 20000;
+
   constructor(private config: SSEConfig) {
     this.maxRetries = config.maxRetries || 5;
     this.baseRetryDelay = config.retryDelay || 1000;
@@ -157,12 +161,21 @@ export class SSEConnection {
       clearInterval(this.heartbeatCheckInterval);
     }
 
+    // OPTIMIZED
     this.heartbeatCheckInterval = setInterval(() => {
-      if (this.isConnected && Date.now() - this.lastHeartbeat > 30000) {
-        console.warn("No heartbeat for 30 seconds, reconnecting...");
+      const timeSinceLastHeartbeat = Date.now() - this.lastHeartbeat;
+
+      // OPTIMIZED
+      if (
+        this.isConnected &&
+        timeSinceLastHeartbeat > this.HEARTBEAT_TIMEOUT_MS
+      ) {
+        console.warn(
+          `No heartbeat for ${this.HEARTBEAT_TIMEOUT_MS / 1000} seconds, reconnecting...`,
+        );
         this.scheduleReconnect();
       }
-    }, 10000);
+    }, this.HEARTBEAT_CHECK_INTERVAL_MS);
   }
 
   private scheduleReconnect(): void {

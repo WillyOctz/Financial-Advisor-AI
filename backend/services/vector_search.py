@@ -2,6 +2,7 @@ import numpy as np
 from typing import List, Dict, Any, Optional
 from sentence_transformers import SentenceTransformer
 import torch
+import threading
 from sqlalchemy.orm import Session
 from backend.models.database import DocumentChunk, FinancialDocument
 from backend.db.redis_client import cache_embeddings, get_cached_embeddings, cache, cache_metrics, cached
@@ -9,6 +10,7 @@ import google.generativeai as genai
 from backend.config.cache_config import get_ttl
 from datetime import timedelta
 import logging
+import gc
 
 logger = logging.getLogger(__name__)
 
@@ -24,30 +26,51 @@ except ImportError:
 
 class VectorSearchService:
     model: Optional[SentenceTransformer] = None
+    model_lock = threading.Lock()
     model_name: Optional[str] = None
+    model_loaded = False
     
     @classmethod
-    def get_model(cls, model_name: str) -> SentenceTransformer:
+    def get_model(cls, model_name: str = "all-MiniLM-L6-v2") -> SentenceTransformer:
         """Return the cached model, loading it only on first call"""
         if cls.model is None or cls.model_name != model_name:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            logger.info(f"Loading SentenceTransformer model: {model_name} on {device}")
-            cls.model = SentenceTransformer(model_name, device=device)
-            cls.model_name = model_name
-            logger.info(f"Model loaded. Embedding dim: {cls.model.get_sentence_embedding_dimension()}")
+            with cls.model_lock:
+                # double check locking pattern
+                if cls.model is None or cls.model_name != model_name:
+                    device = "cuda" if torch.cuda.is_available() else "cpu"
+                    logger.info(f"Loading SentenceTransformer model: {model_name} on {device}")
+                    cls.model = SentenceTransformer(model_name, device=device)
+                    cls.model_name = model_name
+                    cls.model_loaded = True
+                    logger.info(f"Model loaded. Embedding dim: {cls.model.get_sentence_embedding_dimension()}")
+                    logger.info(f"Device: {device}, Model size: ~{cls._estimate_model_size_mb()}MB")
         return cls.model
+    
+    @classmethod
+    def cleanup_model(cls):
+        """Force cleanup of model from memory (use sparingly)"""
+        with cls.model_lock:
+            if cls.model is not None:
+                del cls.model
+                cls.model = None
+                cls.model_name = None
+                cls.model_loaded = False
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                logger.info("🗑️ Model unloaded from memory")
     
     def __init__(self, db: Session, model_name: str = "all-MiniLM-L6-v2"):
         self.db = db
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        #self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
         # Load the model
-        logger.info(f"Loading SentenceTransformer model: {model_name} on {self.device}")
+        logger.debug(f"VectorSearchService init - using cached model")
         self.model = self.get_model(model_name)
         
         # Model configuration
         self.embedding_dim = self.model.get_sentence_embedding_dimension()
-        logger.info(f"Model loaded. Embedding dimension: {self.embedding_dim}")
+        logger.debug(f"Model loaded. Embedding dimension: {self.embedding_dim}")
 
     @cached(category='embeddings', ttl=get_ttl('embeddings'))
     def generate_embeddings(self, texts: List[str], batch_size: int = 32) -> List[List[float]]:
@@ -79,13 +102,19 @@ class VectorSearchService:
                 embeddings = []
                 for i in range(0, len(texts_to_encode), batch_size):
                     batch = texts_to_encode[i:i + batch_size]
+                    
                     batch_embeddings = self.model.encode(
                         batch,
                         convert_to_numpy=True,
                         normalize_embeddings=True,
-                        show_progress_bar=False
+                        show_progress_bar=False,
+                        batch_size=batch_size
                     )
                     embeddings.extend(batch_embeddings.tolist())
+                    
+                    # optimize part: clear tensor after large batches
+                    if i > 0 and i % (batch_size * 5) == 0:
+                        gc.collect()
                     
                 # Cache the newly embedded text
                 for text, embedding in zip(texts_to_encode, embeddings):

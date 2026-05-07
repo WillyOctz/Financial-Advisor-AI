@@ -22,10 +22,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend.core.config import settings
 from backend.db.session import db_manager
-from backend.models.database import Base
+from backend.startup_optimizer import startup_optimizer
 from backend.services.multi_document_services import multi_doc_processor
 from backend.api.routes import documents, forecasting, display, auth, cache_monitor, transactions, predictive, two_factor, multi_documents, user_settings
-from backend.scheduler import start_schedulers
 from backend.config.smart_batch_rate_limit import global_rate_limiter, RateLimitConfig, RateLimitStrategy
 
 logger = logging.getLogger(__name__)
@@ -60,6 +59,9 @@ async def lifespan(app: FastAPI):
     
     print("Creating database tables...")
     db_manager.initialize_database()
+    
+    print("Preloadubg Embedding Model...")
+    await startup_optimizer.initialize()
     
     print("Starting Scheulders...")
     start_schedulers()
@@ -101,6 +103,9 @@ async def lifespan(app: FastAPI):
         await monitor_task
     except asyncio.CancelledError:
         pass
+    
+    print("Cleaning up optimizer...")
+    await startup_optimizer.cleanup()
     
     print("=" * 50)
     print("FINANCIAL ADVISOR API SHUTDOWN.")

@@ -30,16 +30,39 @@ class ProgressTracker:
         self.heartbeats = {}
         self.redis_client = None
         
+        # batch update tracking to reduce Redis writes everytime
+        self.pending_updates = defaultdict(dict)
+        self.last_flush = time.time()
+        self.FLUSH_INTERVAL = 2.0
+        
         # initialize redis if available
         if redis_url:
             try:
                 self.redis_client = redis.Redis.from_url(redis_url, decode_responses=False)
                 logger.info(f"Progress tracker connected to Redis")
+                # start batch flusher
+                self.start_batch_flusher()
             except Exception as e:
                 logger.error(f"Failed to connect to Redis: {e}")
                 self.redis_client = None
                 
         self.start_cleanup_thread()
+        
+    def start_batch_flusher(self):
+        """Start background thread for batched redis writes"""
+        def flush_worker():
+            while True:
+                try:
+                    time.sleep(self.FLUSH_INTERVAL)
+                    self.flush_pending_updates()
+                except Exception as e:
+                    logger.error(f"Batch flush error: {e}")
+                    time.sleep(5)
+                    
+        thread = threading.Thread(target=flush_worker, daemon=True, name="ProgressBatchFlusher")
+        
+        thread.start()
+        logger.info(f"Batch flusher started (interval: {self.FLUSH_INTERVAL}s)")
         
     def start_cleanup_thread(self):
         """start background thread for cleaning up old entries"""
@@ -65,6 +88,8 @@ class ProgressTracker:
         with self.lock:
             # Check if this is the final stage
             is_complete = (percentage >= 100 or stage_name.lower() in ["completed", "complete", "success"])
+            is_error = stage_name.lower() in ["error", "cancelled", "failed"]
+            is_critical = is_complete or is_error or (percentage % 10 == 0) # only write milestones immediately
             
             progress_entry = {
                 "stage": stage_name,
@@ -83,18 +108,52 @@ class ProgressTracker:
             # store in memory
             self.progress_data[user_id][upload_id] = progress_entry
             
-            # store in redis for persistence
-            if self.redis_client:
-                try:
-                    redis_key = f"progress:{user_id}:{upload_id}"
-                    serialized = json.dumps(progress_entry, default=str).encode("utf-8")
-                    self.redis_client.setex(redis_key, 7200, serialized)
-                except Exception as e:
-                    logger.warning(f"Failed to store progress in Redis: {e}")
-                    
-            logger.info(f"Progress [{upload_id[:8]}] {stage_name}: {percentage}% - {details}")
+            # batched redis write
+            if is_critical:
+                # flush critical updates only
+                self.flush_single_update(user_id, upload_id, progress_entry)
+            else:
+                # batch other updates 
+                key = f"{user_id}:{upload_id}"
+                self.pending_updates[key] = progress_entry
+                
+            logger.debug(f"Progress [{upload_id[:8]}] {stage_name}: {percentage}% - {details} {'(batched)' if not is_critical else '(immediate)'}")
             
             self.send_heartbeat(user_id, upload_id)
+            
+    def flush_single_update(self, user_id: int, upload_id: str, progress_sentry: dict):
+        """Immediately flush single critical update to Redis"""
+        if self.redis_client:
+            try:
+                redis_key = f"progress:{user_id}:{upload_id}"
+                serialized = json.dumps(progress_sentry, default=str).encode("utf-8")
+                self.redis_client.setex(redis_key, 7200, serialized)
+            except Exception as e:
+                logger.warning(f"Redis single write failed: {e}")
+                
+    def flush_pending_updates(self):
+        """Flush all pending updates in batch"""
+        with self.lock:
+            if not self.pending_updates:
+                return
+            
+            if self.redis_client:
+                try:
+                    # use pipeline for batch writes
+                    pipe = self.redis_client.pipeline()
+                    for key, progress_entry in self.pending_updates.items():
+                        user_id, upload_id = key.split(":", 1)
+                        redis_key = f"progress:{user_id}:{upload_id}"
+                        serialized = json.dumps(progress_entry, default=str).encode("utf-8")
+                        pipe.setex(redis_key, 7200, serialized)
+                        
+                    pipe.execute()
+                    logger.debug(f"Flushed {len(self.pending_updates)} batched updates to Redis")
+                    
+                except Exception as e:
+                    logger.error(f"Batch flush failed: {e}")
+                    
+            self.pending_updates.clear()
             
     def get_progress(self, user_id: int, upload_id: str) -> Optional[Dict[str, Any]]:
         """Get progress with redis fallback"""
