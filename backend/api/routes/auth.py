@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any, Union
 from datetime import timedelta, datetime
 from backend.db.session import get_db
-from backend.services.auth_service import AuthService, SECRET_KEY, ALGORITHM
+from backend.services.auth_service import AuthService, SECRET_KEY, ALGORITHM, decrypt_2fa_secret
 from backend.services.email_service import EmailService
 from backend.models.database import User
 from backend.models.schemas import (
@@ -318,32 +318,30 @@ async def verify_two_factor(
                     "user_backup_code": True
                 }
                 
-        # Verify TOTP code based on 2FA method
-        if verification_data.code and user.two_factor_secret:
-            if verification_data.code:
-                verified = False
+        # Verify TOTP code based on 2FA method (fixed)
+        if verification_data.code:
+            verified = False
+            
+            # app based TOTP
+            if user.two_factor_method == 'app' and user.two_factor_secret:
+                decrypted_secret = decrypt_2fa_secret(user.two_factor_secret)
+                verified = auth_service.verify_two_factor_code(decrypted_secret, verification_data.code)
                 
-                # app based TOTP
-                if user.two_factor_method == 'app' and user.two_factor_secret:
-                    from backend.services.auth_service import decrypt_2fa_secret
-                    decrypted_secret = decrypt_2fa_secret(user.two_factor_secret)
-                    verified = auth_service.verify_two_factor_code(decrypted_secret, verification_data.code)
-                    
-                # email/sms based TOTP
-                elif user.two_factor_method in ['email', 'sms']:
-                    verified = auth_service.verify_2fa_otp(user, verification_data.code)
-                    
-                if verified:
-                    access_token = auth_service.create_access_token(
-                        data={"sub": user.email, "user_id": user.id, "requires_2fa": False}
-                    )
-                    
-                    return {
-                        "access_token": access_token,
-                        "token_type": "bearer",
-                        "user": UserResponse.from_orm(user),
-                        "user_backup_code": False
-                    }
+            # email and SMS based TOTP
+            elif user.two_factor_method in ['email', 'sms']:
+                verified = auth_service.verify_2fa_otp(user, verification_data.code)
+                
+            if verified:
+                access_token = auth_service.create_access_token(
+                    data={"sub": user.email, "user_id": user.id, "requires_2fa": False}
+                )
+                
+                return {
+                    "access_token": access_token,
+                    "token_type": "bearer",
+                    "user": UserResponse.from_orm(user),
+                    "used_backup_code": False
+                }
                 
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
