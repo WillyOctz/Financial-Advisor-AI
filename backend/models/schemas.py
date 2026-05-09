@@ -138,6 +138,8 @@ class UserResponse(BaseModel):
     created_at: datetime
     is_verified: bool
     is_active: bool
+    two_factor_enabled: Optional[bool] = False
+    two_factor_method: Optional[str] = None
 
     class Config:
         from_attributes = True

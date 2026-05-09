@@ -20,7 +20,7 @@ async def setup_two_factor(
     db: Session = Depends(get_db)
 ):
     """Setup 2fa for user"""
-    auth_service = AuthService(db)
+    auth_service = AuthService(db) 
     
     if current_user.two_factor_enabled:
         raise HTTPException(
