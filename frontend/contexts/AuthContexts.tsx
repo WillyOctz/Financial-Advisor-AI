@@ -1,6 +1,5 @@
 "use client";
 
-import { atob } from "buffer";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import Cookies from "js-cookie";
 import { useRouter } from "next/navigation";
@@ -60,12 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userData = localStorage.getItem("user");
       const storedPartialToken = localStorage.getItem("partial_token");
 
-      if (storedPartialToken) {
-        setPartialToken(storedPartialToken);
-        setRequires2FA(true);
-        localStorage.removeItem("partial_token");
-      }
-
+      // fixed parts here due to the old context that makes user has to loop after 2fa
       if (storedToken && userData) {
         try {
           const parsedUser = JSON.parse(userData);
@@ -76,11 +70,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           setUser(parsedUser);
           setToken(storedToken);
+
+          if (storedPartialToken) {
+            localStorage.removeItem("partial_token");
+            Cookies.remove("partial_token");
+          }
+
+          setRequires2FA(false);
+          setPartialToken(null);
         } catch (error) {
-          console.error("Error parsing user data: ", error);
+          console.error("Error parsing user data", error);
           clearAuthData();
         }
+      } else if (storedPartialToken) {
+        setPartialToken(storedPartialToken);
+        setRequires2FA(true);
       }
+
       setIsLoading(false);
     };
 
@@ -88,9 +94,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const clearAuthData = () => {
+    // Clear localStorage
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     localStorage.removeItem("partial_token");
+    localStorage.removeItem("2fa_method");
+    localStorage.removeItem("2fa_user_email");
+    
+    // clear cookies
+    Cookies.remove("token");
+    Cookies.remove("user");
+    Cookies.remove("partial_token");
+    
+    // clear state
     setToken(null);
     setUser(null);
     setRequiresVerification(false);
@@ -99,7 +115,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setTwoFAMethod(null);
   };
 
-  const login = (tokenOrPartial: string, userData: User, is2FA: boolean = false) => {
+  const login = (
+    tokenOrPartial: string,
+    userData: User,
+    is2FA: boolean = false,
+  ) => {
     if (is2FA) {
       // 2FA flow - storing partial token
       Cookies.set("partial_token", tokenOrPartial, COOKIE_OPTIONS);
@@ -130,12 +150,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const complete2FA = (fullToken: string, userData: User) => {
     Cookies.set("token", fullToken, COOKIE_OPTIONS);
     Cookies.set("user", JSON.stringify(userData), COOKIE_OPTIONS);
-    Cookies.remove("partial_token");
-
     localStorage.setItem("token", fullToken);
     localStorage.setItem("user", JSON.stringify(userData));
-    localStorage.removeItem("partial_token");
 
+    Cookies.remove("partial_token");
+    localStorage.removeItem("partial_token");
+    localStorage.removeItem("2fa_method");
+    localStorage.removeItem("2fa_user_email");
+
+    // update state
     setToken(fullToken);
     setUser(userData);
     setRequires2FA(false);
