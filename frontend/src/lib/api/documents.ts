@@ -16,13 +16,6 @@ export const documentsApi = {
     formData.append("user_id", userId.toString());
     formData.append("column_mapping", JSON.stringify(columnMapping));
 
-    console.log("Uploading document...", {
-      filename: file.name,
-      userId,
-      columnMapping,
-      size: file.size,
-    });
-
     try {
       const res = await apiClient.post("/upload", formData, {
         headers: {
@@ -30,7 +23,6 @@ export const documentsApi = {
         },
         timeout: 60000,
       });
-      console.log("✅ Upload response:", res.data);
       return res.data;
     } catch (error: any) {
       console.error("❌ Upload failed:", error);

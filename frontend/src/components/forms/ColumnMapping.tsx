@@ -179,7 +179,7 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
         setMapping(autoMapping);
         setAutoDetected(detected);
       } catch (error) {
-        console.error("❌ Error reading file:", error);
+        console.error("❌ Error reading file:");
         alert(
           `Error reading file: ${
             error instanceof Error ? error.message : "Unknown error"

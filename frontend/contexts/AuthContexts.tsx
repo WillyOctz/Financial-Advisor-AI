@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setRequires2FA(false);
           setPartialToken(null);
         } catch (error) {
-          console.error("Error parsing user data", error);
+          console.error("Error parsing user data");
           clearAuthData();
         }
       } else if (storedPartialToken) {

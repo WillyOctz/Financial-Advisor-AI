@@ -35,15 +35,11 @@ export const useUpload = (): UseUploadResult => {
       formData.append("user_id", userId.toString());
       formData.append("column_mapping", JSON.stringify(columnMapping));
 
-      console.log("📤 Uploading file:", file.name);
-
       const res = await apiClient.post("/upload", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
       });
-
-      console.log("Upload started with an ID:", res.data.upload_id);
       const transactionsResponse = await apiClient.get(
         `/${res.data.document_id}/transactions`,
       );

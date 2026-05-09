@@ -3,36 +3,31 @@
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api/client";
+import { useAuth } from "../../../contexts/AuthContexts";
 import { Shield, AlertTriangle, Loader2, ArrowLeft } from "lucide-react";
 
 export default function Verify2FAPage() {
   const router = useRouter();
+  const {
+    complete2FA,
+    partialToken: contextPartialToken,
+    twoFAMethod,
+  } = useAuth();
 
   const [code, setCode] = useState("");
   const [backupCode, setBackupCode] = useState("");
   const [useBackupCode, setUseBackupCode] = useState(false);
-  const [partialToken, setPartialToken] = useState("");
-  const [method, setMethod] = useState<"app" | "email" | "sms" | null>(null);
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    // get partial token from localstorage
-    const token = localStorage.getItem("partial_token");
-    const storedMethod = localStorage.getItem("2fa_method") as "app" | "email" | "sms" | null;
-
-    if (!token) {
+    // check the partial token in the context first
+    if (!contextPartialToken) {
       router.push("/login");
-      return;
     }
-    setPartialToken(token);
-
-    if (storedMethod) {
-      setMethod(storedMethod)
-    }
-  }, [router]);
+  }, [contextPartialToken, router]);
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,31 +49,25 @@ export default function Verify2FAPage() {
       setError("");
 
       const res = await apiClient.post("/auth/verify-2fa", {
-        partial_token: partialToken,
+        partial_token: contextPartialToken,
         code: useBackupCode ? undefined : codeToVerify,
         backup_code: useBackupCode ? codeToVerify : undefined,
       });
 
-      // store the full access token
       const { access_token, user } = res.data;
 
-      // save to localstorage and cookies
-      localStorage.setItem("token", access_token);
-      localStorage.setItem("user", JSON.stringify(user));
-      document.cookie = `token=${access_token}; path=/; max-age=${30 * 24 * 60 * 60}`;
+      // update all the context state
+      complete2FA(access_token, user);
 
-      // clear partial token
-      localStorage.removeItem("partial_token");
+      setSuccess("Verification successfull Redirecting...");
 
-      setSuccess("Verification successful! Redirecting...");
-
-      // redirect to dashboard
+      // delay to make it look cool loading state
       setTimeout(() => {
         router.push("/dashboard");
       }, 1000);
-    } catch (err: any) {
+    } catch (error: any) {
       setError(
-        err.response?.data?.detail ||
+        error.response?.data?.detail ||
           "Invalid verification code. Please try again.",
       );
     } finally {
@@ -92,7 +81,7 @@ export default function Verify2FAPage() {
       setError("");
 
       await apiClient.post("/auth/resend-2fa-code", {
-        partial_token: partialToken,
+        partial_token: contextPartialToken,
       });
 
       setSuccess("New code sent! Check your email/phone.");
@@ -109,8 +98,17 @@ export default function Verify2FAPage() {
 
   const handleBackToLogin = () => {
     localStorage.removeItem("partial_token");
+    localStorage.removeItem("2fa_method");
     router.push("/login");
   };
+
+  if (!contextPartialToken) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -124,7 +122,8 @@ export default function Verify2FAPage() {
             Two-Factor Authentication
           </h1>
           <p className="text-gray-600">
-            Enter the verification code to complete your login
+            Enter the verification code{" "}
+            {twoFAMethod && `from your ${twoFAMethod}`} to complete your login
           </p>
         </div>
 
@@ -164,23 +163,26 @@ export default function Verify2FAPage() {
                     autoFocus
                   />
                   <p className="text-xs text-gray-500 mt-2 text-center">
-                    Enter the code from your authenticator app, email, or SMS
+                    Enter the code from your{" "}
+                    {twoFAMethod || "authenticator app, email, or SMS"}
                   </p>
                 </div>
 
-                {/* Resend Code Button */}
-                <div className="mb-6 text-center">
-                  <button
-                    type="button"
-                    onClick={handleResendCode}
-                    disabled={resendLoading}
-                    className="text-sm text-blue-600 hover:text-blue-700 disabled:text-gray-400"
-                  >
-                    {resendLoading
-                      ? "Sending..."
-                      : "Didn't receive a code? Resend"}
-                  </button>
-                </div>
+                {/* Resend Code Button - Only show for email/sms */}
+                {twoFAMethod && twoFAMethod !== "app" && (
+                  <div className="mb-6 text-center">
+                    <button
+                      type="button"
+                      onClick={handleResendCode}
+                      disabled={resendLoading}
+                      className="text-sm text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+                    >
+                      {resendLoading
+                        ? "Sending..."
+                        : "Didn't receive a code? Resend"}
+                    </button>
+                  </div>
+                )}
               </>
             ) : (
               <>
@@ -211,7 +213,7 @@ export default function Verify2FAPage() {
             <button
               type="submit"
               disabled={loading || (!code && !backupCode)}
-              className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-medium"
+              className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-medium transition-colors"
             >
               {loading ? (
                 <>
@@ -234,7 +236,7 @@ export default function Verify2FAPage() {
                 setBackupCode("");
                 setError("");
               }}
-              className="w-full text-sm text-gray-600 hover:text-gray-900"
+              className="w-full text-sm text-gray-600 hover:text-gray-900 transition-colors"
             >
               {useBackupCode
                 ? "Use verification code instead"
@@ -247,7 +249,7 @@ export default function Verify2FAPage() {
             <button
               type="button"
               onClick={handleBackToLogin}
-              className="w-full text-sm text-gray-500 hover:text-gray-700 flex items-center justify-center gap-2"
+              className="w-full text-sm text-gray-500 hover:text-gray-700 flex items-center justify-center gap-2 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Back to login

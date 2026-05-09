@@ -58,13 +58,10 @@ export class SSEConnection {
       url += `?token=${encodeURIComponent(this.config.token)}`;
     }
 
-    console.log(`Connecting to SSE: ${url}`);
-
     try {
       this.eventSource = new EventSource(url, { withCredentials: true });
 
       this.eventSource.onopen = () => {
-        console.log("SSE connection established");
         this.isConnected = true;
         this.retryCount = 0;
         this.config.onConnected?.();
@@ -96,12 +93,6 @@ export class SSEConnection {
           // update heartbeat on any data
           this.lastHeartbeat = Date.now();
 
-          console.log("SSE update:", {
-            stage: data.stage,
-            percentage: data.percentage,
-            details: data.details?.substring(0, 50),
-          });
-
           // ensure percentage bar is number
           const progressData: SSEProgressData = {
             ...data,
@@ -117,8 +108,6 @@ export class SSEConnection {
 
           // handle completion
           if (data.is_complete || data.is_error) {
-            console.log(`🏁 SSE ${data.is_complete ? "completed" : "errored"}`);
-
             // set a delay before close to ensure a message is processed
             setTimeout(() => {
               this.disconnect();
@@ -189,10 +178,6 @@ export class SSEConnection {
     this.retryCount++;
     const delay = this.baseRetryDelay * Math.pow(2, this.retryCount - 1);
 
-    console.log(
-      `Reconnecting in ${delay}ms (attempt ${this.retryCount}/${this.maxRetries})`,
-    );
-
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
     }
@@ -220,8 +205,6 @@ export class SSEConnection {
       this.eventSource.close();
       this.eventSource = null;
     }
-
-    console.log("SSE connection closed");
   }
 
   isConnecting(): boolean {

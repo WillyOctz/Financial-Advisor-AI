@@ -35,7 +35,15 @@ export default function ProtectedRoute({
         return;
       }
     }
-  }, [user, isLoading, router, requiresVerification, requireEmailVerification, requires2FA, partialToken]);
+  }, [
+    user,
+    isLoading,
+    router,
+    requiresVerification,
+    requireEmailVerification,
+    requires2FA,
+    partialToken,
+  ]);
 
   if (isLoading) {
     return (
@@ -45,9 +53,20 @@ export default function ProtectedRoute({
     );
   }
 
+  // if still in 2fa route, do not render anything
   if (partialToken && requires2FA) {
     return null;
   }
 
-  return user && !requiresVerification ? <>{children}</> : null;
+  // if no user, do not render
+  if (!user) {
+    return null;
+  }
+
+  // if email verification is required and user has not verified , don't render
+  if (requireEmailVerification && requiresVerification) {
+    return null;
+  }
+
+  return <>{children}</>;
 }
