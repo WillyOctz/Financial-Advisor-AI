@@ -185,7 +185,7 @@ class ModerationLogs(Base):
     topic_category = Column(String(50), nullable=True)  # 'financial', 'off_topic', 'greeting', etc.
     confidence = Column(Float, nullable=True)
     response_message = Column(Text, nullable=True)
-    metadata = Column(JSON, nullable=True)  # Store additional context
+    meta_data = Column(JSON, nullable=True)  # Store additional context
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     __table_args__ = (

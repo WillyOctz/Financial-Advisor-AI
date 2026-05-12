@@ -251,7 +251,7 @@ class RAGService:
                 topic_category=moderation_result.topic_category.value if moderation_result.topic_category else None,
                 confidence=moderation_result.confidence,
                 response_message=moderation_result.response_message,
-                metadata=moderation_result.metadata
+                meta_data=moderation_result.metadata
             )
             
             self.db.add(moderation_log)
