@@ -7,9 +7,7 @@ import logging
 from dataclasses import dataclass
 from functools import partial
 import concurrent.futures
-import json
 import os
-import tempfile
 import time
 import psutil
 import gc
@@ -18,7 +16,6 @@ from backend.services.document_services import EnhancedDocumentService
 from backend.services.batch_processor import BatchProcessor
 from backend.config.smart_batch_rate_limit import (global_rate_limiter, batch_rate_limiter, RateLimitConfig, RateLimitStrategy)
 from backend.db.session import get_background_session
-from backend.models.database import FinancialDocument, Transaction
 from backend.db.redis_client import cache
 
 logger = logging.getLogger(__name__)

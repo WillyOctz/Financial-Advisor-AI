@@ -7,10 +7,8 @@ import logging
 import joblib, hashlib
 from backend.models.database import Transaction
 from backend.services.forecasting_services import ForecastingService
-from scipy import stats
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
-import json
 
 logger = logging.getLogger(__name__)
 

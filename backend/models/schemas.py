@@ -363,3 +363,43 @@ class TwoFactorLoginResponse(BaseModel):
     method: str
     message: str
     
+class ModerationLogCreate(BaseModel):
+    """Schema for creating moderation log entries"""
+    user_id: int
+    query_text: str
+    is_approved: bool
+    should_block: bool
+    violation_type: Optional[str] = None
+    severity: Optional[str] = None
+    topic_category: Optional[str] = None
+    confidence: Optional[float] = None
+    response_message: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+class ModerationLogResponse(BaseModel):
+    """Schema for moderation log responses"""
+    id: int
+    user_id: int
+    query_text: str
+    is_approved: bool
+    should_block: bool
+    violation_type: Optional[str]
+    severity: Optional[str]
+    topic_category: Optional[str]
+    confidence: Optional[float]
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class ModerationStatsResponse(BaseModel):
+    """Statistics about content moderation"""
+    total_queries: int
+    blocked_queries: int
+    approved_queries: int
+    abuse_queries: int
+    off_topic_queries: int
+    block_rate: float
+    approval_rate: float
+    timeframe: str
+    

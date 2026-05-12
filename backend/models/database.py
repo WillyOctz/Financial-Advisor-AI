@@ -170,3 +170,26 @@ class CategoryMapping(Base):
     keyword = Column(String(100), unique=True, nullable=False)
     category = Column(String(100), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+class ModerationLogs(Base):
+    """Logs all content moderation for event analysis"""
+    __tablename__ = "moderation_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    query_text = Column(Text, nullable=False)
+    is_approved = Column(Boolean, nullable=False)
+    should_block = Column(Boolean, nullable=False)
+    violation_type = Column(String(50), nullable=True)  # 'abuse', 'off_topic', 'unclear', etc.
+    severity = Column(String(20), nullable=True)  # 'NONE', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'
+    topic_category = Column(String(50), nullable=True)  # 'financial', 'off_topic', 'greeting', etc.
+    confidence = Column(Float, nullable=True)
+    response_message = Column(Text, nullable=True)
+    metadata = Column(JSON, nullable=True)  # Store additional context
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    __table_args__ = (
+        Index('idx_moderation_user_date', 'user_id', 'created_at'),
+        Index('idx_moderation_violation', 'violation_type', 'severity'),
+        Index('idx_moderation_blocked', 'should_block', 'created_at'),
+    )

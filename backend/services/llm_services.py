@@ -5,6 +5,7 @@ import requests
 import logging
 from dotenv import load_dotenv
 from enum import Enum
+from backend.services.LLM_Content_Filter.prompt_templates import PromptTemplates
 
 load_dotenv()
 
@@ -20,6 +21,7 @@ class LLMService:
         self.fallback_providers = [
             LLMProvider.GROQ
         ]
+        self.prompt_templates = PromptTemplates()
 
         # Initialize APi's
         self.__init__apis()
@@ -97,12 +99,15 @@ class LLMService:
             "Content-Type": "application/json"
         }
         
+        # use the professional financial advisor system prompt
+        system_prompt = self.prompt_templates.FINANCIAL_ADVISOR_SYSTEM_PROMPT
+        
         payload = {
             "model": "llama-3.3-70b-versatile",  
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a certified financial advisor with expertise in personal finance, budgeting, and investment strategies."
+                    "content": system_prompt
                 },
                 {
                     "role": "user",

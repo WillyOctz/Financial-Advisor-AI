@@ -1,11 +1,14 @@
 import traceback
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
+from datetime import datetime, timedelta
 from backend.db.session import get_db
 from backend.services.display_service import DisplayService
 from backend.models.schemas import AIAdviceRequest, AIAdviceResponse
 from backend.api.routes.auth import get_current_user
-from backend.models.database import User
+from backend.models.database import User, ModerationLogs
+
 
 router = APIRouter(prefix="/display", tags=["display"])
 
@@ -40,6 +43,11 @@ def get_ai_advice(
     try:
         display_service = DisplayService(db)
         
+        # validate custom_prompt if provided, if no custom prompt use the deault one
+        user_query = request.custom_prompt if request.custom_prompt else "Provide financial advice based on my transactions"
+        
+        # rag service will check the queries and do the block 
+        
         # get summary for addtional context
         summary = display_service.get_financial_summary(
             request.user_id, 
@@ -49,8 +57,19 @@ def get_ai_advice(
         # generate AI advice
         advice_response = display_service.generate_ai_advice(
             request.user_id,
-            request.custom_prompt
+            user_query
         )
+        
+        # check if response was blocked 
+        if advice_response.advice and "content moderation" in advice_response.advice.lower():
+            return AIAdviceResponse(
+                advice=advice_response.advice,
+                insights=advice_response.insights,
+                recommendations=advice_response.recommendations,
+                generated_at=advice_response.generated_at,
+                financial_health_score=None,
+                key_metrics=None
+            )
 
         # enhance response with additional metrics
         enhanced_response = AIAdviceResponse(
@@ -71,3 +90,60 @@ def get_ai_advice(
     except Exception as e:
         print(f"❌ Error generating advice: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error generating advice: {str(e)}")
+    
+@router.get("/moderation/stats/{user_id}")
+def get_moderation_stats(
+    user_id: int,
+    days: int = 30,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get moderation statistics for user"""
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this user's data")
+    
+    try:
+        # calculate data range
+        start_date = datetime.now() - timedelta(days=days)
+        
+        total_queries = db.query(ModerationLogs).filter(
+            ModerationLogs.user_id == user_id,
+            ModerationLogs.created_at >= start_date
+        ).count()
+        
+        blocked_queries = db.query(ModerationLogs).filter(
+            ModerationLogs.user_id == user_id,
+            ModerationLogs.should_block == True,
+            ModerationLogs.created_at >= start_date
+        ).count()
+        
+        # get violation
+        violations = db.query(
+            ModerationLogs.violation_type,
+            func.count(ModerationLogs.id).label('count')
+        ).filter(
+            ModerationLogs.user_id == user_id,
+            ModerationLogs.violation_type != None,
+            ModerationLogs.created_at >= start_date
+        ).group_by(ModerationLogs.violation_type).all()
+        
+        violation_breakdown = {v.violation_type: v.count for v in violations}
+        
+        # calculate rates
+        approval_rate = ((total_queries - blocked_queries) / total_queries * 100) if total_queries > 0 else 100.0
+        block_rate = (blocked_queries / total_queries * 100) if total_queries > 0 else 0.0
+        
+        return {
+            "user_id": user_id,
+            "timeframe_days": days,
+            "total_queries": total_queries,
+            "blocked_queries": blocked_queries,
+            "approved_queries": total_queries - blocked_queries,
+            "approval_rate": round(approval_rate, 2),
+            "block_rate": round(block_rate, 2),
+            "violation_breakdown": violation_breakdown
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching stats: {str(e)}")
+    

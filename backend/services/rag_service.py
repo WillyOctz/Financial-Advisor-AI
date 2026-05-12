@@ -4,6 +4,9 @@ from backend.services.vector_search import VectorSearchService
 import google.generativeai as genai
 import os
 from backend.services.llm_services import LLMService, LLMProvider
+from backend.services.LLM_Content_Filter.content_moderator import get_content_moderator
+from backend.services.LLM_Content_Filter.prompt_templates import PromptTemplates
+from backend.models.database import ModerationLogs
 from dotenv import load_dotenv
 import logging
 
@@ -17,10 +20,46 @@ class RAGService:
         self.vector_search = VectorSearchService(db)
         self.llm_service = LLMService(primary_provider=LLMProvider.GEMINI)
         self.current_provider = LLMProvider.GEMINI # to track which current provider is used
+        self.content_moderator = get_content_moderator()
+        self.prompt_templates = PromptTemplates()
 
     def generate_contextual_advice(self, user_id: int, query: str, financial_context: str) -> Tuple[str, List[str], List[str], str]:
         """Generate AI advice using RAG along with fallback LLM support"""
         try:
+            # content moderation - check if query is appropriate
+            moderation_result = self.content_moderator.moderate_query(query, user_id)
+            
+            # log moderation result to the database
+            self.log_moderation(user_id, query, moderation_result)
+            
+            # handle blocked or inappropriate queries
+            if moderation_result.should_block:
+                logger.warning(
+                    f"Query blocked for user {user_id}: "
+                    f"Type={moderation_result.violation_type}, "
+                    f"Severity={moderation_result.severity.name}"
+                )
+                
+                return (
+                    moderation_result.response_message,
+                    ["Content moderation active"],
+                    ["Please ask financial-related questions"],
+                    "moderation_blocked"
+                )
+                
+            # handle a greeting one with brief response
+            if moderation_result.topic_category.value == 'greeting':
+                logger.info(f"Greeting detected from user {user_id}")
+                return (
+                    moderation_result.response_message,
+                    ["Greeting acknowledged"],
+                    ["Ask about your budget, expenses, or savings"],
+                    "greeting_response"
+                )
+                
+            # query approved, continue to regular flow RAG
+            logger.info(f"Query approved for user {user_id}, proceeding with RAG")
+            
             # Search for relevant document chunks
             relevant_chunks = self.vector_search.search_similar_transactions(query, user_id)
 
@@ -38,8 +77,12 @@ class RAGService:
                 context_text = 'No specific transaction data available for semantic search'
                 logger.info("No relevant chunks found, using fallback context")
 
-            # Build the enhanced prompt
-            prompt = self._build_financial_prompt(financial_context, context_text, query)
+            # Build the enhanced prompt using template
+            prompt = self.prompt_templates.format_rag_prompt(
+                financial_context=financial_context,
+                rag_context=context_text,
+                user_query=query
+            )
 
             # Generate response with fallback support
             response_data = self._generate_llm_response(prompt)
@@ -194,3 +237,28 @@ class RAGService:
     def get_current_provider(self) -> str:
         """Get the currently active LLM provider"""
         return self.current_provider.value
+    
+    def log_moderation(self, user_id: int, query: str, moderation_result) -> None:
+        """Log moderation for analysis later"""
+        try:
+            moderation_log = ModerationLogs(
+                user_id=user_id,
+                query_text=query[:500], # truncate long queries
+                is_approved=moderation_result.is_approved,
+                should_block=moderation_result.should_block,
+                violation_type=moderation_result.violation_type,
+                severity=moderation_result.severity.name if moderation_result.severity else None,
+                topic_category=moderation_result.topic_category.value if moderation_result.topic_category else None,
+                confidence=moderation_result.confidence,
+                response_message=moderation_result.response_message,
+                metadata=moderation_result.metadata
+            )
+            
+            self.db.add(moderation_log)
+            self.db.commit()
+            
+            logger.info(f"Logged moderation event for user {user_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to log moderation event: {e}")
+            self.db.rollback()

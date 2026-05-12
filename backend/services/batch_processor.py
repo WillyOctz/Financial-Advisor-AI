@@ -13,14 +13,10 @@ from backend.services.vector_search import VectorSearchService
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from datetime import datetime
 import logging
-import hashlib
-import asyncio
 import time
 import torch
 import gc
 import psutil
-import os
-import io
 from contextlib import contextmanager
 
 from backend.config.smart_batch_rate_limit import batch_rate_limiter, global_rate_limiter

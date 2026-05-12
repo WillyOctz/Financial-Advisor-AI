@@ -4,7 +4,7 @@ from jose import jwt
 from passlib.context import CryptContext
 from backend.services.cache_warmer import CacheWarmer
 from backend.models.database import User
-from backend.models.schemas import UserCreate, UserLogin
+from backend.models.schemas import UserCreate
 from sqlalchemy.orm import Session
 import os
 import hashlib
