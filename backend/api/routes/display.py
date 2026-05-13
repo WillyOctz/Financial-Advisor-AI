@@ -60,8 +60,16 @@ def get_ai_advice(
             user_query
         )
         
-        # check if response was blocked 
-        if advice_response.advice and "content moderation" in advice_response.advice.lower():
+        is_moderated_response = advice_response.advice and any([
+            "content_moderation" in advice_response.advice.lower(),
+            "I'm your financial advisor ai" in advice_response.advice.lower(),
+            "hello! i'm your financial advisor" in advice_response.advice.lower(),
+            "i'm specialized in financial management" in advice_response.advice.lower(),
+            "i didn't quite understand that" in advice_response.advice.lower(),
+            "i'm not sure i understand" in advice_response.advice.lower(),
+        ])
+        
+        if is_moderated_response:
             return AIAdviceResponse(
                 advice=advice_response.advice,
                 insights=advice_response.insights,
