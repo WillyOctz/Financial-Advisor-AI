@@ -32,14 +32,14 @@ import {
 } from "lucide-react";
 
 interface EnhancedAIAdviceResponse extends AIAdviceResponse {
-  financial_health_score?: number;
+  financial_health_score?: number | null;
   key_metrics?: {
     savings_rate?: number;
     expense_to_income_ratio?: number;
     essential_spending_ratio?: number;
-  };
-  risk_assessment?: string[];
-  improvement_oppurtunities?: string[];
+  } | null;
+  risk_assessment?: string[] | null;
+  improvement_opportunities?: string[] | null;
 }
 
 interface AdviceGeneratorProps {
@@ -282,7 +282,7 @@ const SectionLabel = ({
 
 // ----------------Advice Display----------------
 const AdviceDisplay = ({ advice }: { advice: EnhancedAIAdviceResponse }) => {
-  const score = advice.financial_health_score;
+  const score = advice.financial_health_score || undefined;
   const health = getHealthScore(score);
 
   return (
@@ -458,7 +458,7 @@ const AdviceDisplay = ({ advice }: { advice: EnhancedAIAdviceResponse }) => {
 
       {/* Risk & Oppurtunities */}
       {advice.risk_assessment?.length ||
-      advice.improvement_oppurtunities?.length ? (
+      advice.improvement_opportunities?.length ? (
         <motion.div
           variants={fadeUp}
           className="grid grid-cols-1 lg:grid-cols-2 gap-4"
@@ -490,8 +490,8 @@ const AdviceDisplay = ({ advice }: { advice: EnhancedAIAdviceResponse }) => {
               </motion.div>
             </div>
           )}
-          {advice.improvement_oppurtunities &&
-            advice.improvement_oppurtunities.length > 0 && (
+          {advice.improvement_opportunities &&
+            advice.improvement_opportunities.length > 0 && (
               <div>
                 <SectionLabel
                   dotColor="bg-violet-400"
@@ -505,7 +505,7 @@ const AdviceDisplay = ({ advice }: { advice: EnhancedAIAdviceResponse }) => {
                   animate="visible"
                   className="space-y-2"
                 >
-                  {advice.improvement_oppurtunities.map((opp, i) => (
+                  {advice.improvement_opportunities.map((opp, i) => (
                     <motion.div
                       key={i}
                       variants={slideInRight}
