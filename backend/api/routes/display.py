@@ -60,14 +60,37 @@ def get_ai_advice(
             user_query
         )
         
-        is_moderated_response = advice_response.advice and any([
-            "content_moderation" in advice_response.advice.lower(),
-            "I'm your financial advisor ai" in advice_response.advice.lower(),
-            "hello! i'm your financial advisor" in advice_response.advice.lower(),
-            "i'm specialized in financial management" in advice_response.advice.lower(),
-            "i didn't quite understand that" in advice_response.advice.lower(),
-            "i'm not sure i understand" in advice_response.advice.lower(),
-        ])
+        # check if the response is from moderation
+        is_moderated_response = False
+        if advice_response.advice:
+            advice_lower = advice_response.advice.lower()
+            
+            moderation_keywords = [
+                "content moderation",
+                "i'm your financial advisor ai",
+                "hello! i'm your financial advisor",
+                "i'm specialized in financial management",
+                "i didn't quite understand that",
+                "i'm not sure i understand",
+                "keep our conversation",
+                "maintain a professional tone",
+                "community guidelines",
+                "goes against our",
+                "please keep",
+                "i work best when",
+                "could you please ask",
+                "try asking me about",
+                "what financial question"
+            ]
+            
+            is_moderated_response = any(keyword in advice_lower for keyword in moderation_keywords)
+            
+            # check to see insights contain moderateion message
+            if advice_response.insights:
+                for insight in advice_response.insights:
+                    if any(keyword in insight.lower() for keyword in ["moderation", "greeting", "off-topic", "inappropriate"]):
+                        is_moderated_response = True
+                        break
         
         if is_moderated_response:
             return AIAdviceResponse(

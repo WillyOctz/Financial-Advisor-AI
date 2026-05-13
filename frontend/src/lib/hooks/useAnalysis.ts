@@ -72,7 +72,7 @@ export const useAnalysis = (): UseAnalysisResult => {
       try {
         const res = await apiClient.post("/display/advice", {
           user_id: userId,
-          prompt: customPrompt,
+          custom_prompt: customPrompt,
         });
         setAdvice(res.data);
       } catch (error: any) {

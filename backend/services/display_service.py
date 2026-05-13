@@ -305,7 +305,8 @@ class DisplayService:
         )
 
         # Save insights to database for future reference
-        self._save_financial_insights(user_id, insights, recommendations, advice_text)
+        if provider_used not in ["greeting_response", "moderation_blocked"]:
+            self._save_financial_insights(user_id, insights, recommendations, advice_text)
 
         return AIAdviceResponse(
             advice=advice_text,

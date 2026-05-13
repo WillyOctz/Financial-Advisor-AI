@@ -11,16 +11,16 @@ export interface Transaction {
 export interface AIAdviceResponse {
   advice: string;
   insights: string[];
-  recommendation: string[];
+  recommendations: string[];
   generated_at: string;
-  financial_health_score?: number;
+  financial_health_score?: number | null;
   key_metrics?: {
     savings_rate?: number;
     expense_to_income_ratio?: number;
     essential_spending_ratio?: number;
-  };
-  risk_assessment?: string[];
-  improvement_oppurtunities?: string[];
+  } | null;
+  risk_assessment?: string[] | null;
+  improvement_opportunities?: string[] | null;
 }
 
 export interface FinancialSummary {
@@ -66,7 +66,7 @@ export interface AccuracyMetrics {
   mdape: number;
   coverage: number;
   interpretation: string;
-  confidence: 'high' | 'medium' | 'low';
+  confidence: "high" | "medium" | "low";
 }
 
 export interface ForecastResponse {
@@ -123,8 +123,8 @@ export interface ForecastScenario {
   };
   comparison: {
     optimistic_vs_baseline: number;
-    pessimistic_vs_baseline: number; 
-  }
+    pessimistic_vs_baseline: number;
+  };
 }
 
 export interface AIAdviceResponse {
@@ -226,3 +226,15 @@ export interface FinancialHealthCheck {
   next_review_recommended: string;
 }
 
+export function isFinancialAdviceResponse(response: AIAdviceResponse): boolean {
+  return (
+    response.financial_health_score !== null &&
+    response.financial_health_score !== undefined &&
+    response.key_metrics !== null &&
+    response.key_metrics !== undefined
+  );
+}
+
+export function isModerationResponse(response: AIAdviceResponse): boolean {
+  return !isFinancialAdviceResponse(response);
+}
