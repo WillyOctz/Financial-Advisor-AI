@@ -10,6 +10,9 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { AccuracyMetrics } from "@/types/financial";
+import { useCurrency } from "@/lib/hooks/useCurrency";
+import { formatCurrency } from "@/lib/utils/currency";
+import { format } from "path";
 
 interface ForecastAccuracyProps {
   metrics?: AccuracyMetrics;
@@ -98,6 +101,8 @@ const fadeUp = { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } };
 export const ForecastAccuracy: React.FC<ForecastAccuracyProps> = ({
   metrics,
 }) => {
+  const { currency } = useCurrency();
+
   if (!metrics) {
     return (
       <div className="rounded-2xl border border-slate-800/60 bg-slate-900/80 p-8 text-center">
@@ -254,7 +259,7 @@ export const ForecastAccuracy: React.FC<ForecastAccuracyProps> = ({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MetricCell
             label="MAE"
-            value={`$${metrics.mae.toFixed(2)}`}
+            value={formatCurrency(metrics.mae, currency)}
             sub="Mean Absolute Error"
             icon={BarChart3}
             iconColor="text-blue-400"
@@ -262,7 +267,7 @@ export const ForecastAccuracy: React.FC<ForecastAccuracyProps> = ({
           />
           <MetricCell
             label="RMSE"
-            value={`$${metrics.rmse.toFixed(2)}`}
+            value={formatCurrency(metrics.rmse, currency)}
             sub="Root Mean Square Error"
             icon={TrendingUp}
             iconColor="text-emerald-400"

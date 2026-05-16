@@ -9,14 +9,13 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  ReferenceLine,
-  Area,
-  AreaChart,
 } from "recharts";
 import { motion } from "framer-motion";
 import { ForecastResponse } from "@/types/financial";
-import { formatCurrency, formatDate } from "@/lib/utils/formatters";
+import { formatDate } from "@/lib/utils/formatters";
 import { TrendingUp } from "lucide-react";
+import { useCurrency } from "@/lib/hooks/useCurrency";
+import { formatCurrency } from "@/lib/utils/currency";
 
 interface ForecastChartProps {
   forecast: ForecastResponse;
@@ -24,7 +23,7 @@ interface ForecastChartProps {
   height?: number;
 }
 
-const CustomToolTip = ({ active, payload, label }: any) => {
+const CustomToolTip = ({ active, payload, label, currency }: any) => {
   if (!active || !payload?.length) return null;
   return (
     <motion.div
@@ -49,7 +48,7 @@ const CustomToolTip = ({ active, payload, label }: any) => {
               className="text-sm font-bold tabular-nums"
               style={{ color: entry.color }}
             >
-              {formatCurrency(entry.value)}
+              {formatCurrency(entry.value, currency)}
             </span>
           </div>
         ))}
@@ -63,6 +62,7 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
   title = "Expense Forecast",
   height = 400,
 }) => {
+  const { currency } = useCurrency();
   const chartData = forecast.dates.map((date, index) => ({
     date,
     forecast: forecast.values[index],
@@ -140,7 +140,7 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
               tickLine={false}
             />
             <YAxis
-              tickFormatter={(v) => formatCurrency(v)}
+              tickFormatter={(v) => formatCurrency(v, currency)}
               stroke="#334155"
               tick={{ fill: "#64748b", fontSize: 11 }}
               axisLine={false}

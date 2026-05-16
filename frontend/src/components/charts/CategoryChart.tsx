@@ -12,6 +12,10 @@ import {
   Sector,
 } from "recharts";
 import { FinancialSummary } from "@/types/financial";
+import { formatCurrency } from "@/lib/utils/currency";
+import { useCurrency } from "@/lib/hooks/useCurrency";
+import { format } from "path";
+import { Value } from "@radix-ui/react-select";
 
 interface CategoryChartProps {
   data: FinancialSummary;
@@ -45,6 +49,7 @@ const renderActiveShape = (props: any) => {
     payload,
     percent,
     value,
+    currency,
   } = props;
 
   return (
@@ -87,7 +92,7 @@ const renderActiveShape = (props: any) => {
         fill="#334155"
         className="font-bold text-2xl"
       >
-        ${value.toFixed(0)}
+        {formatCurrency(value, currency, { showSymbol: true })}
       </text>
       <text
         x={cx}
@@ -109,6 +114,7 @@ export const CategoryChart: React.FC<CategoryChartProps> = ({
 }) => {
   const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined);
   const [mounted, setMounted] = useState(false);
+  const { currency } = useCurrency();
 
   React.useEffect(() => {
     setMounted(true);
@@ -139,7 +145,7 @@ export const CategoryChart: React.FC<CategoryChartProps> = ({
             <p className="font-semibold text-slate-900">{payload[0].name}</p>
           </div>
           <p className="text-2xl font-bold text-blue-600 mb-1">
-            ${payload[0].value.toLocaleString()}
+            {formatCurrency(payload[0].value, currency)}
           </p>
           <div className="flex items-center gap-2">
             <div className="flex-1 bg-slate-200 rounded-full h-2 overflow-hidden">
@@ -263,7 +269,9 @@ export const CategoryChart: React.FC<CategoryChartProps> = ({
               outerRadius={75}
               fill="#8884d8"
               dataKey="value"
-              activeShape={renderActiveShape}
+              activeShape={(props: any) =>
+                renderActiveShape({ ...props, currency })
+              }
               onMouseEnter={(_, index) => setActiveIndex(index)}
               onMouseLeave={() => setActiveIndex(undefined)}
               animationBegin={0}

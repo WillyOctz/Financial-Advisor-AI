@@ -15,6 +15,10 @@ SUPPORTED_LANGUAGES = {
     "en", "id", "zh", "ms", "ar", "fr", "de", "es", "ja"
 }
 
+SUPPORTED_CURRENCIES = {
+    "USD", "IDR"
+}
+
 @router.get("/me", response_model=UserResponse)
 def get_current_user_profile(
     current_user: User = Depends(get_current_user)
@@ -29,6 +33,7 @@ def get_preferences(
     """Get user preferences (language, etc.)"""
     return UserPreferencesResponse(
         language=current_user.language or "en",
+        currency=current_user.currency or "USD",
         two_factor_enabled=current_user.two_factor_enabled,
         two_factor_method=current_user.two_factor_method,
     )
@@ -47,12 +52,22 @@ def update_preferences(
                 detail=f"Unsupported language code '{data.language}'. " f"Supported: {sorted(SUPPORTED_LANGUAGES)}",
             )
         current_user.language = data.language
+    
+    if data.currency is not None:
+        if data.currency not in SUPPORTED_CURRENCIES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported currency code '{data.currency}'. "
+                       f"Supported: {sorted(SUPPORTED_CURRENCIES)}",
+            )
+        current_user.curreny = data.currency
         
     db.commit()
     db.refresh(current_user)
     
     return UserPreferencesResponse(
         language=current_user.language,
+        currency=current_user.currency,
         two_factor_enabled=current_user.two_factor_enabled,
         two_factor_method=current_user.two_factor_method,
     )

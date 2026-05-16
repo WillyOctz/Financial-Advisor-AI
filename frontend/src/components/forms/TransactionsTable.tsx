@@ -40,7 +40,8 @@ import {
 } from "lucide-react";
 import { useTransactionHistory } from "@/lib/hooks/useTransactionsHistory";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { table } from "console";
+import { useCurrency } from "@/lib/hooks/useCurrency";
+import { formatCurrency } from "@/lib/utils/currency";
 
 // Animation variants
 const containerVariants = {
@@ -141,6 +142,7 @@ export function TransactionTable() {
     getExtractedDocuments,
     exportTransactions,
   } = useTransactionHistory();
+  const { currency } = useCurrency();
 
   const [transactions, setTransactions] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
@@ -295,13 +297,6 @@ export function TransactionTable() {
 
   const handleRefresh = () => {
     loadTransactionData();
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount);
   };
 
   const clearError = () => {
@@ -553,7 +548,7 @@ export function TransactionTable() {
                         delay: 0.2,
                       }}
                     >
-                      {formatCurrency(summary.total_income)}
+                      {formatCurrency(summary.total_income, currency)}
                     </motion.p>
                     <div className="flex items-center gap-1 text-xs text-emerald-100">
                       <TrendingUp className="h-3 w-3" />
@@ -593,7 +588,7 @@ export function TransactionTable() {
                         delay: 0.3,
                       }}
                     >
-                      {formatCurrency(summary.total_expenses)}
+                      {formatCurrency(summary.total_expenses, currency)}
                     </motion.p>
                     <div className="flex items-center gap-1 text-xs text-rose-100">
                       <TrendingDown className="h-3 w-3" />
@@ -851,7 +846,7 @@ export function TransactionTable() {
                                 }
                                 whileHover={{ scale: 1.05 }}
                               >
-                                {formatCurrency(transaction.amount)}
+                                {formatCurrency(transaction.amount, currency)}
                               </motion.span>
                             </TableCell>
                           </motion.tr>

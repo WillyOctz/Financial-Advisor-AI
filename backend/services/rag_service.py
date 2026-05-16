@@ -14,6 +14,13 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+class QueryType:
+    """Classify query types for different response strategies"""
+    DATA_ANALYSIS = "data_analysis"
+    CONVERSATIONAL_ADVICE = "conversational_advice"
+    GENERAL_FINANCIAL = "general_financial"
+    SPECIFIC_QUESTION = "specific_quesiton"
+
 class RAGService:
     def __init__(self, db: Session):
         self.db = db
@@ -57,44 +64,57 @@ class RAGService:
                     "greeting_response"
                 )
                 
+            # classify query first then query approved, continue to regular flow RAG
+            query_type = self.classify_query_type(query)
+            logger.info(f"Query classified as: {query_type}")
+            
             # query approved, continue to regular flow RAG
             logger.info(f"Query approved for user {user_id}, proceeding with RAG")
+
+            # decide to fetch RAG context based on query type
+            use_rag = query_type in [QueryType.DATA_ANALYSIS, QueryType.CONVERSATIONAL_ADVICE]
             
-            # Search for relevant document chunks
-            relevant_chunks = self.vector_search.search_similar_transactions(query, user_id)
-
-            logger.info(f"Found {len(relevant_chunks)} relevant chunks for RAG")
-
-            # Build context from relevant chunks
             context_text = ""
-            if relevant_chunks:
-                context_text = "RELEVANT HISTORICAL TRANSACTION DATA:\n"
-                for i, chunk in enumerate(relevant_chunks[:3]): # limit to 3
-                    context_text += f"\n--- Chunk {i+1} (Relevance: {chunk['similarity_score']:.2f}) ---\n"
-                    context_text += f"{chunk['chunk_text']}\n"
-
+            if use_rag:
+                # search relevant dcoument chunks
+                relevant_chunks = self.vector_search.search_similar_transactions(query, user_id)
+                
+                logger.info(f"Found {len(relevant_chunks)} relevant chunks for RAG")
+                
+                # build context from relevant chunks
+                if relevant_chunks:
+                    context_text = "RELEVANT HISTORICAL TRANSACTION DATA:\n"
+                    for i, chunk in enumerate(relevant_chunks[:3]): # limit it to 3
+                        context_text += f"\n--- Chunk {i+1} (Relevance: {chunk['similarity_score']:.2f}) ---\n"
+                        context_text += f"{chunk['chunk_text']}\n"
+                else:
+                    context_text = 'No specific transaction data available for semantic search'
+                    logger.info("No relevant chunks found, using fallback context")
+                    
             else:
-                context_text = 'No specific transaction data available for semantic search'
-                logger.info("No relevant chunks found, using fallback context")
-
-            # Build the enhanced prompt using template
-            prompt = self.prompt_templates.format_rag_prompt(
+                context_text = "No transaction data needed for this query type."
+                logger.info(f"Skipping RAG for {query_type} - conversational response")
+                
+            prompt = self._build_contextual_prompt(
+                query=query,
+                query_type=query_type,
                 financial_context=financial_context,
-                rag_context=context_text,
-                user_query=query
+                rag_context=context_text
             )
-
-            # Generate response with fallback support
+            
+            # generate the response with context text
             response_data = self._generate_llm_response(prompt)
-
-            # Extract the advice text
+            
             advice_text = response_data.get("text", "")
             provider_used = response_data.get("provider_used", "unknown")
-
-            # Extract insights and recommendations
-            insights, recommendations = self._extract_structured_insights(advice_text)
-
-            # Log which provider was used
+            
+            # insights/recommendations differ based on query type
+            insights, recommendations = self._extract_structured_insights(
+                advice_text,
+                query_type
+            )
+            
+            # log which provider was used
             logger.info(f"Generated advice using provider: {provider_used}")
             if provider_used not in ["unknown", "none", "error", "fallback"]:
                 try:
@@ -103,7 +123,7 @@ class RAGService:
                     self.current_provider = LLMProvider.GEMINI
             else:
                 self.current_provider = LLMProvider.GEMINI
-
+                
             return advice_text, insights, recommendations, provider_used
         
         except Exception as e:
@@ -111,44 +131,180 @@ class RAGService:
             error_message = "Unable to generate financial advice at this time. Please try again later or contact support."
             return error_message, ["Service temporarily unavailable"], ["Please try again later"], "error"
         
-    def _build_financial_prompt(self, financial_context: str, context_text: str, query: str) -> str:
-        """Build the financial advice prompt"""
-        return f"""
-        ROLE: You are a certified financial advisor with expertise in personal finance, budgeting, and investment strategies.
-
-        USER'S FINANCIAL CONTEXT:
-        {financial_context}
-
-        {context_text}
-
-        USER'S SPECIFIC QUESTION OR REQUEST:
-        "{query}"
-
-        TASK: Provide comprehensive financial advice based on ALL available data. Your response MUST include:
-
-        1. **EXECUTIVE SUMMARY** (1-2 sentences): High-level assessment
-        2. **DETAILED ANALYSIS** (3-4 sentences): Break down income, expenses, savings patterns
-        3. **ACTIONABLE RECOMMENDATIONS** (2-3 specific actions):
-           - What they should start doing
-           - What they should stop doing  
-           - What they should optimize
-        4. **RISK ASSESSMENT & OPPORTUNITIES** (2-3 points):
-           - Potential financial risks identified
-           - Opportunities for improvement
-        5. **QUANTITATIVE TARGETS** (1-2 specific, measurable goals):
-           - Savings rate target
-           - Expense reduction targets
-           - Timeline for achievement
-
-        IMPORTANT GUIDELINES:
-        - Reference specific numbers from the financial context when possible
-        - If data is limited, acknowledge limitations but provide general best practices
-        - Be empathetic but direct
-        - Focus on practical, implementable advice
-        - Consider both short-term (1-3 months) and long-term (6-12 months) perspectives
-        - Format recommendations as bullet points for clarity
-        """
+    def classify_query_type(self, query: str) -> str:
+        """Classify the query type to determine response strategy"""
+        query_lower = query.lower()
+        
+        # data anlysis queries
+        data_analysis_keywords = [
+            'show me', 'display', 'what did i spend', 'how much did i', 'breakdown',
+            'summary', 'total', 'list my', 'my expenses', 'my income', 'last month',
+            'this year', 'spending on', 'spent on', 'category', 'where did'
+        ]
+        
+        # specific questions 
+        conversational_keywords = [
+            'how can i', 'what should i', 'advice', 'tips', 'help me', 'suggest',
+            'recommend', 'improve', 'optimize', 'better', 'reduce', 'increase',
+            'save more', 'cut down'
+        ]
+        
+        # general finance knowledge
+        general_knowledge_keywords = [
+            'what is', 'what are', 'explain', 'define', 'difference between',
+            'how does', 'why should', 'tell me about', 'meaning of', 'generally'
+        ]
+        
+        # specific yes/no pattern or question
+        specific_question_keywords = [
+            'should i invest', 'is it good', 'worth it', 'is this a good',
+            'better to', 'which one', 'or', '?'
+        ]
+        
+        # check patterns
+        if any(keyword in query_lower for keyword in data_analysis_keywords):
+            return QueryType.DATA_ANALYSIS
+        
+        elif any(keyword in query_lower for keyword in conversational_keywords):
+            return QueryType.CONVERSATIONAL_ADVICE
+        
+        elif any(keyword in query_lower for keyword in general_knowledge_keywords):
+            return QueryType.GENERAL_FINANCIAL
+        
+        elif any(keyword in query_lower for keyword in specific_question_keywords):
+            return QueryType.SPECIFIC_QUESTION
+        
+        # default to conversational advice
+        return QueryType.CONVERSATIONAL_ADVICE
+        
+    def _build_contextual_prompt(self, financial_context: str, rag_context: str, query: str, query_type: str) -> str:
+        """Build different advice prompt based on query type for more natural response"""
+        if query_type == QueryType.DATA_ANALYSIS:
+            return f"""
+            You are a financial advisor AI. The user asked for data analysis.
+ 
+            USER'S FINANCIAL SUMMARY:
+            {financial_context}
+ 
+            {rag_context}
+ 
+            USER'S QUERY: "{query}"
+ 
+            Provide a clear, structured analysis with:
+            1. Direct answer to their question (2-3 sentences)
+            2. Key insights from the data (2-3 bullet points)
+            3. Actionable recommendations (1-2 bullet points)
+ 
+            Be concise and data-focused. Use specific numbers from the context.
+            """
+            
+        elif query_type == QueryType.CONVERSATIONAL_ADVICE:
+            return f"""
+            You are a friendly financial advisor having a conversation with someone seeking advice.
+ 
+            THEIR FINANCIAL SITUATION:
+            {financial_context}
+ 
+            {rag_context}
+ 
+            THEY ASKED: "{query}"
+ 
+            Respond naturally and helpfully:
+            - Address their question directly in a conversational tone
+            - Reference their actual financial data when relevant
+            - Give 2-3 practical, specific tips they can act on today
+            - Be encouraging and supportive
+            - Keep it concise (3-5 sentences)
+ 
+            Don't use formal headers like "EXECUTIVE SUMMARY". Just talk to them like a helpful friend.
+            """
+        
+        elif query_type == QueryType.GENERAL_FINANCIAL:
+            return f"""
+            You are a financial educator explaining concepts clearly.
+ 
+            USER'S FINANCIAL CONTEXT (for personalization):
+            {financial_context}
+ 
+            THEY ASKED: "{query}"
+ 
+            Explain clearly and concisely:
+            - Define the concept in simple terms
+            - Why it matters for personal finance
+            - 1-2 practical examples
+            - How it might apply to their situation (if relevant from context)
     
+            Keep it under 5 sentences. Be educational but not preachy.
+            """
+        
+        else:
+            return f"""
+            You are a financial advisor answering a specific question.
+ 
+            THEIR SITUATION:
+            {financial_context}
+ 
+            THEIR QUESTION: "{query}"
+ 
+            Provide a direct, thoughtful answer:
+            - Give your recommendation clearly (2-3 sentences)
+            - Explain the reasoning briefly
+            - Mention any important considerations or risks
+            - Keep it conversational and helpful
+ 
+            No formal structure needed. Just answer their question naturally.
+            """
+        
+    def _extract_structured_insights(self, text: str, query_type: str) -> Tuple[List[str], List[str]]:
+        """Enhanced insight extraction using pattern recognition"""
+        insights = []
+        recommendations = []
+
+        # for DATA_ANALYSIS, extract the structured insights
+        if query_type == QueryType.DATA_ANALYSIS:
+            sections = text.split('\n\n')
+            
+            for section in sections:
+                section_lower = section.lower()
+                
+                # extract insights
+                if any(keyword in section_lower for keyword in ['insight:', 'observation:', 'pattern:', 'key finding']):
+                    sentences = [s.strip() for s in section.split('.') if s.strip()]
+                    for sentence in sentences[:3]:
+                        if any(keyword in sentence.lower() for keyword in ['spending', 'income', 'saving', 'expense']):
+                            insights.append(sentence.strip())
+                            
+                # extract recommendations
+                elif any(keyword in section_lower for keyword in ['recommendation:', 'suggestion:', 'action:', 'consider']):
+                    lines = section.split('\n')
+                    for line in lines:
+                        line_lower = line.lower()
+                        if any(keyword in line_lower for keyword in ['start', 'stop', 'reduce', 'increase', 'try']):
+                            clean_line = line.strip()
+                            if clean_line.startswith(('- ', '* ', '• ', '1.', '2.', '3.')):
+                                clean_line = clean_line[:2].strip()
+                            recommendations.append(clean_line)
+        
+        # for conversational                    
+        else:
+            sentences = [s.strip() + '.' for s in text.split('.') if s.strip()]
+            
+            # first 1-2 sentences as insights
+            insights = sentences[:2] if len(sentences) >= 2 else sentences
+            
+            # look for action-oriented sentences as recommendations
+            action_words = ['you should', 'try', 'consider', 'start', 'focus on', 'prioritize', 'avoid', 'reduce', 'increase']
+            recommendations = [s for s in sentences if any(word in s.lower() for word in action_words)][:2]
+            
+            # fallback
+            if not insights:
+                insights = ["Your financial situation shows room for optimization."]
+            
+            if not recommendations:
+                recommendations = ["Review your expenses and identify areas to reduce spending."]
+                
+            return insights[:3], recommendations[:2]
+        
     def _generate_llm_response(self, prompt: str) -> Dict[str, Any]:
         """Generate LLM response with fallback providers"""
         try:
@@ -158,7 +314,7 @@ class RAGService:
                 max_output_tokens=1000,
                 temperature=0.7
             )
-
+ 
             if result.get("success", False):
                 return result
             else:
@@ -181,58 +337,6 @@ class RAGService:
                 "success": False,
                 "error": str(e)
             }
-        
-    def _extract_structured_insights(self, text: str) -> Tuple[List[str], List[str]]:
-        """Enhanced insight extraction using pattern recognition"""
-        insights = []
-        recommendations = []
-
-        # Split into sections if they exist
-        sections = text.split('\n\n')
-
-        for section in sections:
-            section_lower = section.lower()
-
-            # Extract insights (patterns, trends, observations)
-            if any(keyword in section_lower for keyword in ['insight:', 'observation:', 'pattern:', 'trend:', 'noticed that', 'analysis shows']):
-                # Split into sentences and clean
-                sentences = [s.strip() for s in section.split('.') if s.strip()]
-                for sentence in sentences[:3]: # Take only 3 insights
-                    if any(keyword in sentence.lower() for keyword in ['spending', 'income', 'saving', 'pattern', 'trend', 'high', 'low', 'increasing', 'decreasing']):
-                        insights.append(sentence.strip())
-
-            # Extract recommendations (action items)
-            elif any(keyword in section_lower for keyword in ['recommendation:', 'suggestion:', 'advise:', 'should', 'consider', 'try to', 'action:', 'next steps']):
-                # this process look for bullet points or numbered lists
-                lines = section.split('\n')
-                for line in lines:
-                    line_lower = line.lower()
-                    if any(keyword in line_lower for keyword in ['start', 'stop', 'increase', 'decrease', 'reduce', 'optimize', 'invest', 'save']):
-                        # Clean the line
-                        clean_line = line.strip()
-                        if clean_line.startswith(('- ', '* ', '• ', '1.', '2.', '3.')):
-                            clean_line = clean_line[2:].strip()
-                        recommendations.append(clean_line)
-
-        # if no structured insights found, fallback
-        if not insights:
-            sentences = [s.strip() for s in text.split('.') if s.strip()]
-            insights = [sentences[i] for i in range(min(2, len(sentences))) if len(sentences[i]) > 10]
-
-        if not recommendations:
-            sentences = [s.strip() for s in text.split('.') if s.strip()]
-            # Look for action-oriented sentences
-            action_sentences = [s for s in sentences if any(word in s.lower() for word in ['you should', 'try to', 'consider', 'we recommend', 'it would be', 'would help'])]
-            recommendations = action_sentences[:2]
-
-        # Ensure not to return empty lists if above won't work
-        if not insights:
-            insights = ["Analyze specific spending patterns to identify optimization opportunities."]
-
-        if not recommendations:
-            recommendations = ["Review monthly expenses and create a detailed budget."]
-
-        return insights[:3], recommendations[:2]
     
     def get_current_provider(self) -> str:
         """Get the currently active LLM provider"""

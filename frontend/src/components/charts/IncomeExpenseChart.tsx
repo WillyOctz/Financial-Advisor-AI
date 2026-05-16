@@ -15,6 +15,8 @@ import {
 } from "recharts";
 import { FinancialSummary } from "@/types/financial";
 import { TrendingUp, TrendingDown, DollarSign } from "lucide-react";
+import { useCurrency } from "@/lib/hooks/useCurrency";
+import { formatCurrency } from "@/lib/utils/currency";
 
 interface IncomeExpenseChartProps {
   data: FinancialSummary[];
@@ -23,6 +25,7 @@ interface IncomeExpenseChartProps {
 export const IncomeExpenseChart: React.FC<IncomeExpenseChartProps> = ({
   data,
 }) => {
+  const { currency } = useCurrency();
   const [activeBar, setActiveBar] = useState<string | null>(null);
   const [visibleBars, setVisibleBars] = useState({
     income: true,
@@ -76,7 +79,7 @@ export const IncomeExpenseChart: React.FC<IncomeExpenseChartProps> = ({
                   </span>
                 </div>
                 <span className="font-bold text-slate-900">
-                  ${Number(entry.value).toLocaleString()}
+                  {formatCurrency(Number(entry.value), currency)}
                 </span>
               </motion.div>
             ))}
@@ -188,7 +191,7 @@ export const IncomeExpenseChart: React.FC<IncomeExpenseChartProps> = ({
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2, type: "spring" }}
           >
-            ${totals.income.toLocaleString()}
+            {formatCurrency(totals.income, currency)}
           </motion.p>
         </motion.div>
 
@@ -212,7 +215,7 @@ export const IncomeExpenseChart: React.FC<IncomeExpenseChartProps> = ({
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.3, type: "spring" }}
           >
-            ${totals.expense.toLocaleString()}
+            {formatCurrency(totals.expense, currency)}
           </motion.p>
         </motion.div>
 
@@ -236,7 +239,7 @@ export const IncomeExpenseChart: React.FC<IncomeExpenseChartProps> = ({
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.3, type: "spring" }}
           >
-            ${totals.savings.toLocaleString()}
+            {formatCurrency(totals.savings, currency)}
           </motion.p>
         </motion.div>
       </div>
@@ -285,7 +288,7 @@ export const IncomeExpenseChart: React.FC<IncomeExpenseChartProps> = ({
             <YAxis
               tick={{ fill: "#64748b", fontSize: 12 }}
               tickLine={{ stroke: "#cbd5e1" }}
-              tickFormatter={(value) => `$${value.toLocaleString()}`}
+              tickFormatter={(value) => formatCurrency(value, currency)}
             />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f1f5f9" }} />
 

@@ -41,6 +41,7 @@ class User(Base):
     
     # user preferences
     language = Column(String(10), default='en', nullable=False, server_default='en')
+    currency = Column(String(3), default='USD', nullable=False, server_default='USD')
 
 class FinancialDocument(Base):
     __tablename__ = "financial_documents"

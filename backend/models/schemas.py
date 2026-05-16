@@ -344,10 +344,12 @@ class MultiUploadResponse(BaseModel):
 class UserPreferencesUpdate(BaseModel):
     """Fields the user can update from the settings page"""
     language: Optional[str] = None
+    currency: Optional[str] = None
     
 class UserPreferencesResponse(BaseModel):
     """Current preference state returned to the frontend"""
     language: str
+    currency: str
     two_factor_enabled: bool
     two_factor_method: Optional[str] = None
     

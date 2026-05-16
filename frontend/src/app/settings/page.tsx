@@ -20,11 +20,13 @@ import {
   Smartphone,
   AlertCircle,
   ArrowBigLeft,
+  DollarSign,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Input from "@/components/ui/input";
 import PasswordInput from "@/components/ui/password-input";
 import TwoFactorSettings from "@/components/forms/TwoFactorSetting";
+import CurrencySwitcher from "@/components/forms/CurrencySwitcher";
 import Link from "next/link";
 
 const containerVariants = {
@@ -274,6 +276,9 @@ export default function SettingsPage() {
                     </h2>
                     <p className="text-slate-400">Customize your experience</p>
                   </div>
+
+                  {/* Currency Switcher */}
+                  <CurrencySwitcher />
 
                   {/* Dark Mode */}
                   <div className="flex items-center justify-between p-4 bg-slate-800/30 rounded-xl">
