@@ -20,17 +20,6 @@ export const useCurrency = (): UseCurrencyResult => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // load currency preference from localStorage on mount
-  useEffect(() => {
-    const savedCurrency = localStorage.getItem("currency") as CurrencyCode;
-    if (savedCurrency && (savedCurrency === "USD" || savedCurrency === "IDR")) {
-      setCurrencyState(savedCurrency);
-    } else {
-      // fetch from backend
-      refreshCurrency();
-    }
-  }, []);
-
   const refreshCurrency = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -42,7 +31,9 @@ export const useCurrency = (): UseCurrencyResult => {
       setCurrencyState(userCurrency);
       localStorage.setItem("currency", userCurrency);
     } catch (err: any) {
-      setError(err.res?.data?.detail || "Failed to load currency preference");
+      setError(
+        err.response?.data?.detail || "Failed to load currency preference",
+      );
 
       // fallback to localstorage or default
       const savedCurrency = localStorage.getItem("currency") as CurrencyCode;
@@ -53,6 +44,17 @@ export const useCurrency = (): UseCurrencyResult => {
       setIsLoading(false);
     }
   }, []);
+
+  // load currency preference from localStorage on mount
+  useEffect(() => {
+    const savedCurrency = localStorage.getItem("currency") as CurrencyCode;
+    if (savedCurrency && (savedCurrency === "USD" || savedCurrency === "IDR")) {
+      setCurrencyState(savedCurrency);
+    } else {
+      // fetch from backend
+      refreshCurrency();
+    }
+  }, [refreshCurrency]);
 
   const setCurrency = useCallback(async (newCurrency: CurrencyCode) => {
     setIsLoading(true);
@@ -67,7 +69,9 @@ export const useCurrency = (): UseCurrencyResult => {
       setCurrencyState(newCurrency);
       localStorage.setItem("currency", newCurrency);
     } catch (err: any) {
-      setError(err.res?.data?.detail || "Failed to update currency preference");
+      setError(
+        err.response?.data?.detail || "Failed to update currency preference",
+      );
       throw err;
     } finally {
       setIsLoading(false);

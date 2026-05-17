@@ -8,7 +8,7 @@ import { IncomeExpenseChart } from "@/components/charts/IncomeExpenseChart";
 import { CategoryChart } from "@/components/charts/CategoryChart";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCurrency, formatPercentage } from "@/lib/utils/formatters";
+import { formatPercentage } from "@/lib/utils/formatters";
 import {
   TrendingUp,
   TrendingDown,
@@ -26,6 +26,8 @@ import {
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useUser } from "@/lib/hooks/useUser";
 import PredictiveForm from "@/components/forms/PredictiveForm";
+import { useCurrency } from "@/lib/hooks/useCurrency";
+import { formatCurrency } from "@/lib/utils/currency";
 
 // animation variants
 const containerVariants = {
@@ -85,6 +87,7 @@ export default function AnalysisPage() {
   const { user } = useUser();
   const userId = user?.id ? Number(user.id) : 0;
   const [mounted, setMounted] = useState(false);
+  const { currency } = useCurrency();
 
   useEffect(() => {
     setMounted(true);
@@ -134,7 +137,7 @@ export default function AnalysisPage() {
     ? [
         {
           title: "Total Income",
-          value: formatCurrency(summary.total_income),
+          value: formatCurrency(summary.total_income, currency),
           icon: TrendingUp,
           color: "emerald",
           gradient: "from-emerald-500 to-teal-500",
@@ -144,7 +147,7 @@ export default function AnalysisPage() {
         },
         {
           title: "Total Expenses",
-          value: formatCurrency(summary.total_expenses),
+          value: formatCurrency(summary.total_expenses, currency),
           icon: TrendingDown,
           color: "rose",
           gradient: "from-rose-500 to-pink-500",
@@ -154,7 +157,7 @@ export default function AnalysisPage() {
         },
         {
           title: "Net Savings",
-          value: formatCurrency(summary.net_savings),
+          value: formatCurrency(summary.net_savings, currency),
           icon: DollarSign,
           color: "blue",
           gradient: "from-blue-500 to-cyan-500",
@@ -585,7 +588,7 @@ export default function AnalysisPage() {
                             transition={{ delay: 0.3 }}
                           >
                             <div className="text-2xl md:text-3xl font-bold text-rose-600">
-                              {formatCurrency(summary.top_expense_amount)}
+                              {formatCurrency(summary.top_expense_amount, currency)}
                             </div>
                             <p className="text-xs md:text-sm text-rose-500 font-medium whitespace-nowrap">
                               Track this category

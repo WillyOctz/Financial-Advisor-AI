@@ -43,19 +43,21 @@ export function formatCurrency(
   const config = CURRENCIES[currency];
   const { showSymbol = true, compact = false } = options || {};
 
+  const convertedAmount = convertCurrency(amount, "USD", currency);
+
   const formattedAmount = new Intl.NumberFormat(config.locale, {
     style: showSymbol ? "currency" : "decimal",
     currency: config.code,
     minimumFractionDigits: compact ? 0 : config.decimalPlaces,
     maximumFractionDigits: compact ? 0 : config.decimalPlaces,
     notation: compact ? "compact" : "standard",
-  }).format(amount);
+  }).format(convertedAmount);
 
   return formattedAmount;
 }
 
 // convert from one currency to another
-export function covertCurrency(
+export function convertCurrency(
   amount: number,
   fromCurrency: CurrencyCode,
   toCurrency: CurrencyCode,
