@@ -22,9 +22,9 @@ import {
   Eye,
   Zap,
   Activity,
-  Check,
-  CheckCircle2,
 } from "lucide-react";
+import { useCurrency } from "@/lib/hooks/useCurrency";
+import { formatCurrency } from "@/lib/utils/currency";
 
 interface PredictiveFormProps {
   userId: number;
@@ -88,6 +88,7 @@ const PredictiveForm: React.FC<PredictiveFormProps> = ({ userId }) => {
 
   const [activeTab, setActiveTab] = useState("overview");
   const [mounted, setMounted] = useState(false);
+  const { currency } = useCurrency();
 
   useEffect(() => {
     if (userId) {
@@ -155,6 +156,16 @@ const PredictiveForm: React.FC<PredictiveFormProps> = ({ userId }) => {
           glow: "shadow-gray-500/50",
         };
     }
+  };
+
+  const formatDescriptionWithCurrency = (description: string): string => {
+    const dollarRegex = /\$([0-9,]+(?:\.[0-9]{2})?)/g;
+
+    return description.replace(dollarRegex, (match, amount) => {
+      const numericAmount = parseFloat(amount.replace(/,/g, ""));
+
+      return formatCurrency(numericAmount, currency);
+    });
   };
 
   if (isLoading) {

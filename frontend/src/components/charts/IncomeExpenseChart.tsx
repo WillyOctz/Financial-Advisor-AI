@@ -16,7 +16,7 @@ import {
 import { FinancialSummary } from "@/types/financial";
 import { TrendingUp, TrendingDown, DollarSign } from "lucide-react";
 import { useCurrency } from "@/lib/hooks/useCurrency";
-import { formatCurrency } from "@/lib/utils/currency";
+import { formatCurrency, formatCompactCurrency } from "@/lib/utils/currency";
 
 interface IncomeExpenseChartProps {
   data: FinancialSummary[];
@@ -170,10 +170,10 @@ export const IncomeExpenseChart: React.FC<IncomeExpenseChartProps> = ({
       animate={{ opacity: 1, y: 0 }}
     >
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-6">
         {/* Total income */}
         <motion.div
-          className="p-4 rounded-xl bg-linear-to-br from-emerald-50 to-teal-50 border border-emerald-100 cursor-pointer"
+          className="p-6 rounded-xl bg-linear-to-br from-emerald-50 to-teal-50 border border-emerald-100 cursor-pointer"
           whileHover={{ scale: 1.03, y: -2 }}
           whileTap={{ scale: 0.98 }}
           onClick={() => toggleBar("income")}
@@ -186,12 +186,12 @@ export const IncomeExpenseChart: React.FC<IncomeExpenseChartProps> = ({
             </span>
           </div>
           <motion.p
-            className="text-2xl font-bold text-emerald-900"
+            className="text-xl md:text-2xl font-bold text-emerald-900 truncate"
             initial={{ opacity: 0, scale: 0 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2, type: "spring" }}
           >
-            {formatCurrency(totals.income, currency)}
+            {formatCompactCurrency(totals.income, currency)}
           </motion.p>
         </motion.div>
 
@@ -210,12 +210,12 @@ export const IncomeExpenseChart: React.FC<IncomeExpenseChartProps> = ({
             </span>
           </div>
           <motion.p
-            className="text-2xl font-bold text-rose-900"
+            className="text-xl md:text-2xl font-bold text-rose-900 truncate"
             initial={{ opacity: 0, scale: 0 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.3, type: "spring" }}
           >
-            {formatCurrency(totals.expense, currency)}
+            {formatCompactCurrency(totals.expense, currency)}
           </motion.p>
         </motion.div>
 
@@ -234,12 +234,12 @@ export const IncomeExpenseChart: React.FC<IncomeExpenseChartProps> = ({
             </span>
           </div>
           <motion.p
-            className="text-2xl font-bold text-blue-900"
+            className="text-xl md:text-2xl font-bold text-blue-900 truncate"
             initial={{ opacity: 0, scale: 0 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.3, type: "spring" }}
           >
-            {formatCurrency(totals.savings, currency)}
+            {formatCompactCurrency(totals.savings, currency)}
           </motion.p>
         </motion.div>
       </div>
