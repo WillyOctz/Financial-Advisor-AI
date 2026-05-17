@@ -850,7 +850,7 @@ const PredictiveForm: React.FC<PredictiveFormProps> = ({ userId }) => {
                                   </div>
                                   <AlertDescription>
                                     <p className="text-sm text-slate-700 mb-3">
-                                      {risk.description}
+                                      {formatDescriptionWithCurrency(risk.description)}
                                     </p>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                       <div className="p-3 bg-white rounded-lg border border-slate-200">
