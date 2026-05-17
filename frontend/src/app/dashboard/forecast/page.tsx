@@ -17,6 +17,8 @@ import { ForecastInsights } from "@/components/forecast/ForecastInsights";
 import { ForecastAccuracy } from "@/components/forecast/ForecastAccuracy";
 import { ScenarioAnalysis } from "@/components/forecast/ScenarioAnalysis";
 import { ForecastErrorBoundary } from "@/components/forecast/ForecastErrorBoundary";
+import { useCurrency } from "@/lib/hooks/useCurrency";
+import { formatCompactCurrency, CURRENCIES } from "@/lib/utils/currency";
 import {
   Select,
   SelectContent,
@@ -59,18 +61,32 @@ const AnimatedNumber = ({
   prefix = "",
   suffix = "",
   decimals = 0,
+  currency,
 }: {
   value: number;
   prefix?: string;
   suffix?: string;
   decimals?: number;
+  currency?: "USD" | "IDR";
 }) => {
   const mv = useMotionValue(0);
-  const display = useTransform(
-    mv,
-    (v) =>
-      `${prefix}${v.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}${suffix}`,
-  );
+  
+  const display = useTransform(mv, (v) => {
+    if (currency) {
+      const config = CURRENCIES[currency];
+      return new Intl.NumberFormat(config.locale, {
+        style: "currency",
+        currency: config.code,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+        notation: "compact",
+      }).format(v);
+    }
+    return `${prefix}${v.toLocaleString("en-US", { 
+      minimumFractionDigits: decimals, 
+      maximumFractionDigits: decimals 
+    })}${suffix}`;
+  });
 
   useEffect(() => {
     const ctrl = animate(mv, value, {
@@ -201,6 +217,7 @@ export default function ForecastPage() {
     fetchForecast,
     fetchScenarios,
   } = useForecast();
+  const { currency } = useCurrency();
   const [periods, setPeriods] = useState<number>(6);
   const [viewMode, setViewMode] = useState<
     "forecast" | "insights" | "scenarios"
@@ -351,8 +368,7 @@ export default function ForecastPage() {
                 >
                   <AnimatedNumber
                     value={totalForecast}
-                    prefix="$"
-                    decimals={0}
+                    currency={currency}
                   />
                   <div className="mt-1 text-xs text-slate-500">
                     Over {periods} months

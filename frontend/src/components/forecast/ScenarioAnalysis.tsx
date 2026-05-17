@@ -12,7 +12,8 @@ import {
 } from "recharts";
 import { motion } from "framer-motion";
 import { ForecastScenario } from "@/types/financial";
-import { formatCurrency } from "@/lib/utils/formatters";
+import { useCurrency } from "@/lib/hooks/useCurrency";
+import { formatCurrency } from "@/lib/utils/currency";
 import {
   TrendingUp,
   TrendingDown,
@@ -27,7 +28,7 @@ interface ScenarioAnalysisProps {
 }
 
 // Custom tool tip
-const CustomToolTip = ({ active, payload, label }: any) => {
+const CustomToolTip = ({ active, payload, label, currency }: any) => {
   if (!active || !payload?.length) return null;
   return (
     <motion.div
@@ -52,7 +53,7 @@ const CustomToolTip = ({ active, payload, label }: any) => {
               className="text-sm font-bold tabular-nums"
               style={{ color: entry.color }}
             >
-              {formatCurrency(entry.value)}
+              {formatCurrency(entry.value, currency)}
             </span>
           </div>
         ))}
@@ -78,6 +79,7 @@ const slideLeft = {
 export const ScenarioAnalysis: React.FC<ScenarioAnalysisProps> = ({
   scenarios,
 }) => {
+  const { currency } = useCurrency();
   const { baseline, optimistic, pessimistic, comparison } = scenarios;
 
   // Prepare the chart data
@@ -242,7 +244,7 @@ export const ScenarioAnalysis: React.FC<ScenarioAnalysisProps> = ({
                   >
                     {delta !== undefined && delta !== null
                       ? `${delta > 0 ? "+" : ""}${Math.abs(delta).toFixed(1)}%`
-                      : formatCurrency(value ?? 0)}
+                      : formatCurrency(value ?? 0, currency)}
                   </motion.p>
                   {delta !== null && (
                     <p className="text-xs text-slate-500 mt-0.5">
@@ -312,7 +314,7 @@ export const ScenarioAnalysis: React.FC<ScenarioAnalysisProps> = ({
                     tickLine={false}
                   />
                   <YAxis
-                    tickFormatter={(v) => formatCurrency(v)}
+                    tickFormatter={(v) => formatCurrency(v, currency)}
                     stroke="#334155"
                     tick={{ fill: "#64748b", fontSize: 11 }}
                     axisLine={false}
@@ -320,7 +322,7 @@ export const ScenarioAnalysis: React.FC<ScenarioAnalysisProps> = ({
                     width={72}
                   />
                   <Tooltip
-                    content={<CustomToolTip />}
+                    content={<CustomToolTip currency={currency} />}
                     cursor={{ stroke: "#334155", strokeWidth: 1 }}
                   />
                   <Line
