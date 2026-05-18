@@ -70,21 +70,23 @@ const AnimatedNumber = ({
   currency?: "USD" | "IDR";
 }) => {
   const mv = useMotionValue(0);
-  
+
   const display = useTransform(mv, (v) => {
     if (currency) {
       const config = CURRENCIES[currency];
+      const convertedValue = currency === "IDR" ? v * 17450 : v;
+
       return new Intl.NumberFormat(config.locale, {
         style: "currency",
         currency: config.code,
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
         notation: "compact",
-      }).format(v);
+      }).format(convertedValue);
     }
-    return `${prefix}${v.toLocaleString("en-US", { 
-      minimumFractionDigits: decimals, 
-      maximumFractionDigits: decimals 
+    return `${prefix}${v.toLocaleString("en-US", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
     })}${suffix}`;
   });
 
@@ -366,10 +368,7 @@ export default function ForecastPage() {
                   iconGradient="from-amber-400 to-orange-500"
                   delay={0}
                 >
-                  <AnimatedNumber
-                    value={totalForecast}
-                    currency={currency}
-                  />
+                  <AnimatedNumber value={totalForecast} currency={currency} />
                   <div className="mt-1 text-xs text-slate-500">
                     Over {periods} months
                   </div>

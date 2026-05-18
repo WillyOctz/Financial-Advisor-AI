@@ -10,6 +10,8 @@ import {
   Lightbulb,
   ChevronRight,
 } from "lucide-react";
+import { useCurrency } from "@/lib/hooks/useCurrency";
+import { formatCurrency } from "@/lib/utils/currency";
 
 interface ForecastInsight {
   type: "info" | "warning" | "positive";
@@ -59,6 +61,17 @@ const fadeUp = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } };
 export const ForecastInsights: React.FC<ForecastInsightsProps> = ({
   insights,
 }) => {
+  const { currency } = useCurrency();
+
+  // helper function to convert dollar amount in text to user chosen currency
+  const formatInsightText = (text: string): string => {
+    const dollarRegex = /\$([0-9,]+(?:\.[0-9]{2})?)/g;
+    return text.replace(dollarRegex, (match, amount) => {
+      const numericAmount = parseFloat(amount.replace(/,/g, ""));
+      return formatCurrency(numericAmount, currency);
+    });
+  };
+
   if (!insights || insights.length === 0) {
     return (
       <div className="rounded-2xl border border-slate-800/60 bg-slate-900/80 p-8 text-center">
@@ -138,7 +151,7 @@ export const ForecastInsights: React.FC<ForecastInsightsProps> = ({
                   {/* Description */}
                   <div className="rounded-lg bg-slate-800/60 border border-slate-700/40 p-3">
                     <p className="text-xs text-slate-400 leading-relaxed">
-                      {insight.details}
+                      {formatInsightText(insight.details)}
                     </p>
                   </div>
 
