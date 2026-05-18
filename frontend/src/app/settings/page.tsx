@@ -281,7 +281,7 @@ export default function SettingsPage() {
                   <CurrencySwitcher />
 
                   {/* Dark Mode */}
-                  <div className="flex items-center justify-between p-4 bg-slate-800/30 rounded-xl">
+                  {/*<div className="flex items-center justify-between p-4 bg-slate-800/30 rounded-xl">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-lg bg-linear-to-br from-slate-700 to-slate-800 flex items-center justify-center">
                         {darkMode ? (
@@ -310,10 +310,10 @@ export default function SettingsPage() {
                         }`}
                       />
                     </motion.button>
-                  </div>
+                  </div>*/}
 
                   {/* Danger Zone */}
-                  <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-5">
+                  {/*<div className="bg-red-500/10 border border-red-500/30 rounded-xl p-5">
                     <div className="flex items-center gap-2 mb-4">
                       <AlertCircle className="w-5 h-5 text-red-400" />
                       <h3 className="text-lg font-semibold text-red-400">
@@ -336,7 +336,7 @@ export default function SettingsPage() {
                         </Button>
                       </div>
                     </div>
-                  </div>
+                  </div>*/}
                 </motion.div>
               )}
             </motion.div>
