@@ -105,7 +105,7 @@ export default function ProfileForm({ onSuccess }: ProfileFormProps) {
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
             placeholder="John"
-            className="bg-slate-800/50 border-slate-600/50 text-white placeholder:text-slate-500"
+            className="bg-slate-800/50 border-slate-600/50 text-black placeholder:text-slate-500"
             disabled={isLoading}
             maxLength={100}
           />
@@ -121,7 +121,7 @@ export default function ProfileForm({ onSuccess }: ProfileFormProps) {
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
             placeholder="Carl"
-            className="bg-slate-800/50 border-slate-600/50 text-white placeholder:text-slate-500"
+            className="bg-slate-800/50 border-slate-600/50 text-black placeholder:text-slate-500"
             disabled={isLoading}
             maxLength={100}
           />
