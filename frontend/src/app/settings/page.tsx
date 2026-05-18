@@ -5,6 +5,7 @@ import { motion, Variants } from "framer-motion";
 import {
   Mail,
   Bell,
+  User,
   Shield,
   Settings as SettingsIcon,
   ArrowBigLeft,
@@ -44,7 +45,7 @@ export default function SettingsPage() {
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
 
   const tabs = [
-    // { id: "profile", label: "Profile", icon: User },
+    { id: "profile", label: "Profile", icon: User },
     { id: "security", label: "Security", icon: Shield },
     // { id: "notifications", label: "Notifications", icon: Bell },
     { id: "preferences", label: "Preferences", icon: SettingsIcon },
