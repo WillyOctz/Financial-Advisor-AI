@@ -252,17 +252,17 @@ export default function TwoFactorSettings() {
       )}
 
       {/* Current Status */}
-      <div className="bg-slate-500 rounded-lg shadow-sm border p-6 mb-6">
+      <div className="bg-slate-800/30 rounded-lg shadow-sm border p-6 mb-6">
         <h2 className="text-xl font-semibold mb-4">Current Status</h2>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-gray-600">
+            <p className="text-slate-300">
               Two Factor Authentication is{" "}
               <span
                 className={
                   status?.enabled
                     ? "text-green-600 font-semibold"
-                    : "text-gray-500 font-semibold"
+                    : "text-red-500 font-semibold"
                 }
               >
                 {status?.enabled ? "ENABLED" : "DISABLED"}
@@ -286,7 +286,7 @@ export default function TwoFactorSettings() {
             className={`w-16 h-16 rounded-full flex items-center justify-center ${status?.enabled ? "bg-green-100" : "bg-gray-100"}`}
           >
             <Shield
-              className={`w-8 h-8 ${status?.enabled ? "text-green-600" : "text-gray-400"}`}
+              className={`w-8 h-8 ${status?.enabled ? "text-green-600" : "text-red-400"}`}
             />
           </div>
         </div>
@@ -294,11 +294,11 @@ export default function TwoFactorSettings() {
 
       {/* Setup Flow */}
       {!status?.enabled && !setupStep && (
-        <div className="bg-slate-500 rounded-lg shadow-sm border p-6 mb-6">
+        <div className="bg-slate-800/30 rounded-lg shadow-sm border p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">
             Enable Two-Factor Authentication
           </h2>
-          <p className="text-gray-600 mb-6">
+          <p className="text-slate-300 mb-6">
             Choose your preferred authentication method:
           </p>
 
@@ -315,7 +315,7 @@ export default function TwoFactorSettings() {
               </p>
               <div className="mt-3 text-xs text-gray-500">
                 <p className="font-medium text-green-600">✓ Most secure</p>
-                <p>✓ Works offline</p>
+                <p className="font-medium text-green-600">✓ Works offline</p>
               </div>
             </button>
 
