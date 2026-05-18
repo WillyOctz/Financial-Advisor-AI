@@ -306,7 +306,7 @@ export default function TwoFactorSettings() {
             {/* Authenticator App */}
             <button
               onClick={() => handleStartSetup("app")}
-              className="p-6 border-2 border-gray-400 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all group"
+              className="p-6 border-2 border-gray-400 rounded-lg hover:border-blue-500 hover:bg-blue-500 transition-all group"
             >
               <Smartphone className="w-10 h-10 text-gray-200 group-hover:text-blue-600 mx-auto mb-3" />
               <h3 className="font-semibold mb-2">Authenticator App</h3>
@@ -322,7 +322,7 @@ export default function TwoFactorSettings() {
             {/* Email */}
             <button
               onClick={() => handleStartSetup("email")}
-              className="p-6 border-2 border-gray-400 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all group"
+              className="p-6 border-2 border-gray-400 rounded-lg hover:border-blue-500 hover:bg-blue-500 transition-all group"
             >
               <Mail className="w-10 h-10 text-gray-200 group-hover:text-blue-600 mx-auto mb-3" />
               <h3 className="font-semibold mb-2">Email</h3>
@@ -336,7 +336,7 @@ export default function TwoFactorSettings() {
             {/* SMS */}
             <button
               onClick={() => handleStartSetup("sms")}
-              className="p-6 border-2 border-gray-400 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all group"
+              className="p-6 border-2 border-gray-400 rounded-lg hover:border-blue-600 hover:bg-blue-500 transition-all group"
             >
               <MessageSquare className="w-10 h-10 text-gray-200 group-hover:text-blue-600 mx-auto mb-3" />
               <h3 className="font-semibold mb-2">SMS</h3>
