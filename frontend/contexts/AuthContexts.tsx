@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import Cookies from "js-cookie";
 import { useRouter } from "next/navigation";
+import { apiClient } from "@/lib/api/client";
 
 interface User {
   id: number;
@@ -20,6 +21,7 @@ interface AuthContextType {
   user: User | null;
   login: (token: string, user: User, is2FA: boolean) => void;
   logout: () => void;
+  refreshUser: () => Promise<User | undefined>;
   isLoading: boolean;
   token: string | null;
   requiresVerification: boolean;
@@ -100,12 +102,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem("partial_token");
     localStorage.removeItem("2fa_method");
     localStorage.removeItem("2fa_user_email");
-    
+
     // clear cookies
     Cookies.remove("token");
     Cookies.remove("user");
     Cookies.remove("partial_token");
-    
+
     // clear state
     setToken(null);
     setUser(null);
@@ -170,6 +172,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const refreshUser = async () => {
+    try {
+      const res = await apiClient.get("/users/me");
+      const userData = res.data;
+
+      setUser(userData);
+      localStorage.setItem("user", JSON.stringify(userData));
+      Cookies.set("user", JSON.stringify(userData), COOKIE_OPTIONS);
+
+      return userData;
+    } catch (error: any) {
+      console.error("Failed to refresh user data:", error);
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
+        clearAuthData();
+        router.push("/login");
+      }
+      return undefined;
+    }
+  };
+
   const logout = () => {
     clearAuthData();
     router.push("/login");
@@ -181,6 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         login,
         logout,
+        refreshUser,
         isLoading,
         token,
         requiresVerification,

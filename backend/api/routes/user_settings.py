@@ -7,6 +7,7 @@ from backend.models.schemas import (
     UserResponse,
     UserPreferencesUpdate,
     UserPreferencesResponse,
+    UserProfileUpdate
 )
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -60,7 +61,7 @@ def update_preferences(
                 detail=f"Unsupported currency code '{data.currency}'. "
                        f"Supported: {sorted(SUPPORTED_CURRENCIES)}",
             )
-        current_user.curreny = data.currency
+        current_user.currency = data.currency
         
     db.commit()
     db.refresh(current_user)
@@ -71,3 +72,46 @@ def update_preferences(
         two_factor_enabled=current_user.two_factor_enabled,
         two_factor_method=current_user.two_factor_method,
     )
+    
+@router.patch("/profile", response_model=UserResponse)
+def profile_update(
+    data: UserProfileUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update user profile name"""
+    
+    # validate first name
+    if data.first_name is not None:
+        if len(data.first_name.strip()) < 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="First name cannot be empty"
+            )
+        if len(data.first_name) > 15:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="First name must be less than 15 characters"
+            )
+
+        current_user.first_name = data.first_name.strip()
+        
+    # validate last name
+    if data.last_name is not None:
+        if len(data.last_name.strip()) < 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Last name cannot be empty"
+            )
+        if len(data.last_name) > 15:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Last name must be less than 15 characters"
+            )
+            
+        current_user.last_name = data.last_name.strip()
+        
+    db.commit()
+    db.refresh(current_user)
+    
+    return current_user

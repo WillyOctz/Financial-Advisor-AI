@@ -3,31 +3,18 @@
 import React, { useState } from "react";
 import { motion, Variants } from "framer-motion";
 import {
-  User,
   Mail,
-  Lock,
   Bell,
   Shield,
-  Eye,
-  CreditCard,
-  LogOut,
-  Trash2,
-  Save,
   Settings as SettingsIcon,
-  Moon,
-  Sun,
-  Globe,
-  Smartphone,
-  AlertCircle,
   ArrowBigLeft,
-  DollarSign,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import Input from "@/components/ui/input";
 import PasswordInput from "@/components/ui/password-input";
 import TwoFactorSettings from "@/components/forms/TwoFactorSetting";
 import CurrencySwitcher from "@/components/forms/CurrencySwitcher";
 import Link from "next/link";
+import ProfileForm from "@/components/forms/ProfileForm";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -140,7 +127,11 @@ export default function SettingsPage() {
               className="bg-slate-900/40 backdrop-blur-xl rounded-2xl border border-slate-700/50 shadow-2xl p-6"
             >
               {/* Profile Tab */}
-              {/* can be used to change profile user for later */}
+              {activeTab === "profile" && (
+                <motion.div variants={itemVariants}>
+                  <ProfileForm />
+                </motion.div>
+              )}
 
               {/* Security Tab */}
               {activeTab === "security" && (

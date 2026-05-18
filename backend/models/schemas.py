@@ -356,6 +356,11 @@ class UserPreferencesResponse(BaseModel):
     class Config:
         from_attributes = True
         
+class UserProfileUpdate(BaseModel):
+    """Schema for updating user profile information"""
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+        
 class TwoFactorLoginResponse(BaseModel):
     """Response when 2FA is required during login"""
     partial_token: str
