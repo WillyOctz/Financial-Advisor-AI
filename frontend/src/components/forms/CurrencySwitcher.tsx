@@ -121,7 +121,7 @@ const CurrencySwitcher: React.FC = () => {
       {/* Exchange Rate Info */}
       <div className="mt-4 p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
         <p className="text-xs text-slate-400 mb-1">Current Exchange Rate</p>
-        <p className="text-sm text-white font-medium">1 USD ≈ 15,750 IDR</p>
+        <p className="text-sm text-white font-medium">1 USD ≈ 17,450 IDR</p>
         <p className="text-xs text-slate-500 mt-1">
           Note: All stored amounts remain in USD. Display will convert to your
           preferred currency.

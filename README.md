@@ -33,6 +33,7 @@ This project combines data processing, machine learning, and LLM-based advisory 
 - Redis (caching)
 ### Frontend
 - React / Next.js
+- Framer motion
 
 ### AI / ML
 - Primary LLM: Grok
@@ -40,8 +41,11 @@ This project combines data processing, machine learning, and LLM-based advisory 
 - Embeddings: HuggingFace
 
 ### Infrastructure
-- Supabase (storage)
+- Supabase (cloud storage)
 - Docker (optional services)
+- Vercel (frontend deployment)
+- Huggingface Spaces (backend deployment)
+- Redis Upstash (caching) 
 
 ## ⚙️ Getting Started (Local Setup)
 
