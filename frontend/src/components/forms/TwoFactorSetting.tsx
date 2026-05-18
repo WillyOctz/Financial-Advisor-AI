@@ -252,7 +252,7 @@ export default function TwoFactorSettings() {
       )}
 
       {/* Current Status */}
-      <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+      <div className="bg-slate-500 rounded-lg shadow-sm border p-6 mb-6">
         <h2 className="text-xl font-semibold mb-4">Current Status</h2>
         <div className="flex items-center justify-between">
           <div>
@@ -294,7 +294,7 @@ export default function TwoFactorSettings() {
 
       {/* Setup Flow */}
       {!status?.enabled && !setupStep && (
-        <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+        <div className="bg-slate-500 rounded-lg shadow-sm border p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">
             Enable Two-Factor Authentication
           </h2>
@@ -306,11 +306,11 @@ export default function TwoFactorSettings() {
             {/* Authenticator App */}
             <button
               onClick={() => handleStartSetup("app")}
-              className="p-6 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all group"
+              className="p-6 border-2 border-gray-400 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all group"
             >
-              <Smartphone className="w-10 h-10 text-gray-600 group-hover:text-blue-600 mx-auto mb-3" />
+              <Smartphone className="w-10 h-10 text-gray-200 group-hover:text-blue-600 mx-auto mb-3" />
               <h3 className="font-semibold mb-2">Authenticator App</h3>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-100">
                 Use Google Authenticator, Authy, or others
               </p>
               <div className="mt-3 text-xs text-gray-500">
@@ -322,12 +322,12 @@ export default function TwoFactorSettings() {
             {/* Email */}
             <button
               onClick={() => handleStartSetup("email")}
-              className="p-6 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all group"
+              className="p-6 border-2 border-gray-400 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all group"
             >
-              <Mail className="w-10 h-10 text-gray-600 group-hover:text-blue-600 mx-auto mb-3" />
+              <Mail className="w-10 h-10 text-gray-200 group-hover:text-blue-600 mx-auto mb-3" />
               <h3 className="font-semibold mb-2">Email</h3>
-              <p className="text-sm text-gray-600">Receive codes via email</p>
-              <div className="mt-3 text-xs text-gray-500">
+              <p className="text-sm text-gray-100">Receive codes via email</p>
+              <div className="mt-3 text-xs text-gray-200">
                 <p className="font-medium text-blue-600">✓ Easy to use</p>
                 <p>✓ No extra app needed</p>
               </div>
@@ -336,14 +336,14 @@ export default function TwoFactorSettings() {
             {/* SMS */}
             <button
               onClick={() => handleStartSetup("sms")}
-              className="p-6 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all group"
+              className="p-6 border-2 border-gray-400 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all group"
             >
-              <MessageSquare className="w-10 h-10 text-gray-600 group-hover:text-blue-600 mx-auto mb-3" />
+              <MessageSquare className="w-10 h-10 text-gray-200 group-hover:text-blue-600 mx-auto mb-3" />
               <h3 className="font-semibold mb-2">SMS</h3>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-100">
                 Receive codes via text message
               </p>
-              <div className="mt-3 text-xs text-gray-500">
+              <div className="mt-3 text-xs text-gray-200">
                 <p className="font-medium text-blue-600">✓ Convenient</p>
                 <p>✓ Works on any phone</p>
               </div>
@@ -354,7 +354,7 @@ export default function TwoFactorSettings() {
 
       {/* Setup: Method Configuration */}
       {setupStep === "choose" && selectedMethod && (
-        <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+        <div className="bg-slate-500 rounded-lg shadow-sm border p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">
             Setup{" "}
             {selectedMethod === "app"
