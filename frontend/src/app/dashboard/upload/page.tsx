@@ -171,7 +171,7 @@ export default function UploadPage() {
     {
       number: 2,
       title: "Fill your data",
-      description: "Add your financial documents with your data and corrected format given from the guide you download",
+      description: "Add your financial data from the provided documents",
       icon: FileText,
     },
     {
