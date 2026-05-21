@@ -156,7 +156,7 @@ export default function UploadPage() {
       color: "yellow",
       gradient: "from-yellow-500 to-gold-500",
       bgGradient: "from-yellow-50 to-gold-50",
-      onclick: downloadExcelTemplateUSD,
+      onclick: downloadExcelTemplateIDR,
     },
   ];
 
