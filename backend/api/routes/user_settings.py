@@ -142,4 +142,14 @@ def change_password(
             detail="New password must be different from current password"
         )
         
+    new_password_hash = auth_service.get_password_hash(data.new_password)
+    
+    current_user.password_hash = new_password_hash
+    db.commit()
+    db.refresh(current_user)
+    
+    return PasswordChangeResponse(
+        message="Password changed successfully",
+        success=True
+    )    
     
