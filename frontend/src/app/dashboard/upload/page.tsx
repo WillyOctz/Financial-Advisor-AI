@@ -177,7 +177,7 @@ export default function UploadPage() {
     {
       number: 3,
       title: "Upload File",
-      description: "Drag and drop or click to upload",
+      description: "Drag and drop or click to upload the filled documents",
       icon: Upload,
     },
   ];
