@@ -7,8 +7,11 @@ from backend.models.schemas import (
     UserResponse,
     UserPreferencesUpdate,
     UserPreferencesResponse,
-    UserProfileUpdate
+    UserProfileUpdate,
+    PasswordChangeRequest,
+    PasswordChangeResponse
 )
+from backend.services.auth_service import AuthService
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -115,3 +118,28 @@ def profile_update(
     db.refresh(current_user)
     
     return current_user
+
+@router.post("/change-password", response_model=PasswordChangeResponse)
+def change_password(
+    data: PasswordChangeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Change user password"""
+    auth_service = AuthService(db)
+    
+    # verify current password
+    if not auth_service.verify_password(data.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect"
+        )
+        
+    # check if new password is the same as current password
+    if data.current_password == data.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from current password"
+        )
+        
+    

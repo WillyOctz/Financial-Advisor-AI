@@ -3,6 +3,7 @@ import numpy as np
 from sqlalchemy.orm import Session
 from backend.models.database import FinancialDocument, Transaction, DocumentChunk, ExtractedTransactions
 from backend.services.progress_tracker import progress_tracker, ProgressStage
+from backend.config.currency_utils_config import CurrencyDetector, detect_document_currency
 from backend.services.batch_processor import BatchProcessor
 from backend.db.redis_client import RedisCache, cached
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 class DocumentService:
     def __init__(self, db: Session):
         self.db = db
+        self.currency_detector = CurrencyDetector(base_currency='USD')
     
     def _read_dataframe(self, file_path: str) -> pd.DataFrame:
         """Method to unify to read CSV or Excel files"""
@@ -118,6 +120,19 @@ class DocumentService:
             amount_col = self._find_best_column_match(df.columns, column_mapping.get('amount', 'amount'))
             type_col = self._find_best_column_match(df.columns, column_mapping.get('type', 'type'))
 
+            # detect document currency used
+            document_currency = detect_document_currency(df, amount_col)
+            logger.info(f"Document currency detected: {document_currency}")
+            
+            # update financial document record with detected currency
+            try:
+                doc = self.db.query(FinancialDocument).filter(FinancialDocument.id == document_id).first()
+                if doc:
+                    doc.document_currency = document_currency
+                    self.db.commit()
+            except Exception as e:
+                logger.warning(f"Could not update document currency: {e}")
+            
             transactions_data = []
             successfull_rows = 0
             skipped_rows = 0
@@ -141,25 +156,42 @@ class DocumentService:
                     else:
                         amount_str = amount_raw
 
-                    # Clean the amount string
-                    amount_str = amount_str.replace('$', '').replace(',', '').replace(' ', '').strip()
-
-                    # Handle negative amounts (expenses might be negative)
-                    is_negative = amount_str.startswith('-') or amount_str.startswith('(')
-                    if is_negative:
-                        amount_str = amount_str.replace('-', '').replace('(', '').replace(')', '')
-
-                    # Convert to numeric
-                    amount = pd.to_numeric(amount_str, errors='coerce')
-
-                    if pd.isna(amount):
-                        print(f"⚠️ Row {index}: Skipping - Could not parse amount: '{amount_raw}' -> '{amount_str}'")
-                        skipped_rows += 1
-                        continue
-
-                    # Restore negative sign if needed
-                    if is_negative:
-                        amount = -amount
+                    # currency detector on this part
+                    try:
+                        usd_amount, detected_currency, currency_symbol = self.currency_detector.process_amount_string(amount_str)
+                        original_amount = usd_amount if detected_currency == 'USD' else None
+                        
+                        # if currency was detected, get the original amount before conversion
+                        if detected_currency != 'USD':
+                            # parse original amount without conversion
+                            _, original_amt = self.currency_detector.detect_currency_from_string(amount_str)
+                            original_amount = original_amt
+                        else:
+                            original_amount = usd_amount
+                            
+                        logger.debug(f"Row {index}: {amount_str} -> {usd_amount} USD (original: {original_amount} {detected_currency}, symbol: {currency_symbol})")
+                        
+                    except Exception as e:
+                        logger.warning(f"Row {index}: Currency detection failed, trying fallback: {e}")
+                    
+                        # fallback to old method
+                        amount_str_clean = amount_str.replace('$', '').replace('Rp', '').replace(',', '').replace(' ', '').strip()
+                        is_negative = amount_str_clean.startswith('-') or amount_str_clean.startswith('(')
+                        
+                        if is_negative:
+                            amount_str_clean = amount_str_clean.replace('-', '').replace('(', '').replace(')', '')
+                            
+                        usd_amount = pd.to_numeric(amount_str_clean, errors='coerce')
+                        if pd.isna(usd_amount):
+                            skipped_rows += 1
+                            continue
+                        
+                        if is_negative:
+                            usd_amount = -usd_amount
+                            
+                        detected_currency = 'USD'
+                        original_amount = float(usd_amount)
+                        currency_symbol = '$'
 
                     # parse date
                     date = self._parse_date(row.get(date_col, ''))
@@ -173,7 +205,7 @@ class DocumentService:
                     type_value = str(row.get(type_col, '')).strip()
 
                     # Determine transaction type
-                    transaction_type = self._determine_transaction_type(type_value, amount, description)
+                    transaction_type = self._determine_transaction_type(type_value, usd_amount, description)
 
                     # Caegorize transaction
                     category = categorize_transaction(description, self.db)
@@ -184,11 +216,14 @@ class DocumentService:
                         "user_id": user_id,
                         "date": date.to_pydatetime() if isinstance(date, pd.Timestamp) else date,
                         "description": description[:255],
-                        "amount": float(amount),
+                        "amount": float(usd_amount),
                         "type": transaction_type,
                         "category": category,
                         "month": date.strftime('%Y-%m') if hasattr(date, 'strftime') else str(date)[:7],
-                        "created_at": datetime.now()
+                        "created_at": datetime.now(),
+                        "original_currency": detected_currency,
+                        "original_amount": float(original_amount) if original_amount is not None else None,
+                        "currency_symbol": currency_symbol if currency_symbol else None
                     }
 
                     transactions_data.append(transaction_data)
@@ -657,12 +692,6 @@ class EnhancedDocumentService(DocumentService):
     #@cached(category='document_processing', ttl=timedelta(hours=1))
     def process_document(self, file_path: str, user_id: int, filename: str, column_mapping: dict, cancellation_check=None) -> dict:
         """Optimized document processing with caching and progress tracking along with cancellation progress"""
-        # Check cache first
-        #cached_result = self.cache.get('document_processing', cache_key)   
-        #if cached_result:  
-            #logger.info(f"📄 Using cached document processing result for {filename}")  
-            #return cached_result 
-        
         # self track id
         self.current_user_id = user_id
         

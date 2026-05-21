@@ -35,15 +35,24 @@ export default function UploadPage() {
     setMounted(false);
   }, []);
 
-  const templateData = [
-    ["Date", "Description", "Amount", "Category"],
-    ["2025-01-10", "Salary", "6000", "income"],
-    ["2025-01-11", "Amazon Purchase", "55", "expense"],
-    ["2025-01-12", "McDonalds", "77", "expense"],
+  const templateDataUSD = [
+    ["Date", "Description", "Amount", "Type"],
+    ["2025-01-10", "Salary", "$6,000.00", "Income"],
+    ["2025-01-11", "Amazon Purchase", "$55.50", "Expense"],
+    ["2025-01-12", "McDonalds", "$12.99", "Expense"],
+    ["2025-01-13", "Freelance Payment", "$450.00", "Income"],
   ];
 
-  const downloadCSVTemplate = () => {
-    const csvContent = templateData
+  const templateDataIDR = [
+    ["Date", "Description", "Amount", "Type"],
+    ["2025-01-10", "Gaji Bulanan", "Rp 87.250.000", "Income"],
+    ["2025-01-11", "Belanja Online", "Rp 850.000", "Expense"],
+    ["2025-01-12", "Makan Siang", "Rp 150.000", "Expense"],
+    ["2025-01-13", "Freelance", "Rp 7.500.000", "Income"],
+  ]
+
+  const downloadCSVTemplateUSD = () => {
+    const csvContent = templateDataUSD
       .map((row) => row.map((field) => `"${field}"`).join(","))
       .join("\n");
 
@@ -58,8 +67,24 @@ export default function UploadPage() {
     window.URL.revokeObjectURL(url);
   };
 
-  const downloadExcelTemplate = () => {
-    const ws = XLSX.utils.aoa_to_sheet(templateData);
+  const downloadCSVTemplateIDR = () => {
+    const csvContent = templateDataIDR
+      .map((row) => row.map((field) => `"${field}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "financial_data_template.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const downloadExcelTemplateUSD = () => {
+    const ws = XLSX.utils.aoa_to_sheet(templateDataUSD);
     const wscols = [{ wch: 15 }, { wch: 30 }, { wch: 15 }, { wch: 15 }];
     ws["!cols"] = wscols;
     const wb = XLSX.utils.book_new();
@@ -67,7 +92,16 @@ export default function UploadPage() {
     XLSX.writeFile(wb, "financial_data_template.xlsx");
   };
 
-  const downloadJSONTemplate = () => {
+  const downloadExcelTemplateIDR = () => {
+    const ws = XLSX.utils.aoa_to_sheet(templateDataIDR);
+    const wscols = [{ wch: 15 }, { wch: 30 }, { wch: 15 }, { wch: 15 }];
+    ws["!cols"] = wscols;
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
+    XLSX.writeFile(wb, "financial_data_template.xlsx");
+  };
+
+  /*const downloadJSONTemplate = () => {
     const jsonData = templateData.slice(1).map((row) => ({
       Date: row[0],
       Description: row[1],
@@ -84,36 +118,45 @@ export default function UploadPage() {
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
-  };
+  };*/
 
   // templates options with icons and descriptions
   const templates = [
     {
-      name: "CSV",
+      name: "CSV (USD Format)",
       description: "Simple text format",
       icon: FileText,
       color: "blue",
       gradient: "from-blue-500 to-cyan-500",
       bgGradient: "from-blue-50 to-cyan-30",
-      onclick: downloadCSVTemplate,
+      onclick: downloadCSVTemplateUSD,
     },
     {
-      name: "Excel",
+      name: "CSV (IDR Format)",
+      description: "Simple text format",
+      icon: FileText,
+      color: "red",
+      gradient: "from-red-500 to-rose-500",
+      bgGradient: "from-red-50 to-rose-50",
+      onclick: downloadCSVTemplateIDR,
+    },
+    {
+      name: "Excel (USD Format)",
       description: "Microsoft Excel format",
       icon: FileSpreadsheet,
       color: "emerald",
       gradient: "from-emerald-500 to-teal-500",
       bgGradient: "from-emerald-50 to-teal-50",
-      onclick: downloadExcelTemplate,
+      onclick: downloadExcelTemplateUSD,
     },
     {
-      name: "JSON",
-      description: "For Developers",
-      icon: Code,
-      color: "purple",
-      gradient: "from-purple-500 to-pink-500",
-      bgGradient: "from-purple-50 to-pink-50",
-      onclick: downloadJSONTemplate,
+      name: "Excel (IDR Format)",
+      description: "Microsoft Excel format",
+      icon: FileSpreadsheet,
+      color: "yellow",
+      gradient: "from-yellow-500 to-gold-500",
+      bgGradient: "from-yellow-50 to-gold-50",
+      onclick: downloadExcelTemplateUSD,
     },
   ];
 
@@ -122,13 +165,13 @@ export default function UploadPage() {
     {
       number: 1,
       title: "Download Template",
-      description: "Choose your preferred format",
+      description: "Choose your preferred format along with your preferred currency",
       icon: Download,
     },
     {
       number: 2,
       title: "Fill your data",
-      description: "Add your financial documents",
+      description: "Add your financial documents with your data and corrected format given from the guide you download",
       icon: FileText,
     },
     {
@@ -345,7 +388,7 @@ export default function UploadPage() {
                             example: "Groceries Week 2",
                             required: true,
                           },
-                          { name: "Amount", example: "76.99", required: true },
+                          { name: "Amount", example: "$76.99 or Rp 27.000", required: true },
                           {
                             name: "Category",
                             example: "Income/Expense",

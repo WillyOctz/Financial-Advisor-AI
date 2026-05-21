@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from enum import Enum
 import json
+import re
 
 class TransactionType(str, Enum):
     INCOME = "INCOME"
@@ -360,6 +361,28 @@ class UserProfileUpdate(BaseModel):
     """Schema for updating user profile information"""
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    
+class PasswordChangeRequest(BaseModel):
+    """Schema for changing user password in settings"""
+    current_password: str
+    new_password: str
+    
+    @validator('new_password')
+    def validate_password(cls, v):
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        if not any(char.isdigit() for char in v):
+            raise ValueError('Password must contain at least one digit')
+        if not any(char.isupper() for char in v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;\'`~]', v):
+            raise ValueError('Password must contain at least one symbol')
+        return v
+    
+class PasswordChangeResponse(BaseModel):
+    """Response after password change"""
+    message: str
+    success: bool
         
 class TwoFactorLoginResponse(BaseModel):
     """Response when 2FA is required during login"""

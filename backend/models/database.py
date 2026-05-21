@@ -57,6 +57,7 @@ class FinancialDocument(Base):
     processed = Column(Boolean, default=False)
     processed_at = Column(DateTime(timezone=True), nullable=True)
     transaction_count = Column(Integer, default=0)
+    document_currency = Column(String(3), default='USD', nullable=True)
     
     __table_args__ = (
         Index('idx_documents_user_processed', 'user_id', 'processed', 'uploaded_at'),
@@ -79,7 +80,12 @@ class Transaction(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     is_archived = Column(Boolean, default=False)
-    archived_at = Column(DateTime(timezone=True), nullable=True)  
+    archived_at = Column(DateTime(timezone=True), nullable=True) 
+    
+    # Currency tracking columns
+    original_currency = Column(String(3), default='USD', nullable=True)  # Currency from uploaded document
+    original_amount = Column(Float, nullable=True)  # Amount in original currency before conversion
+    currency_symbol = Column(String(10), nullable=True)  # currency symbol ($, Rp, €, etc.) 
     
     __table_args__ = (
         Index('idx_transactions_user_date_type', 'user_id', 'date', 'type'),
@@ -87,7 +93,8 @@ class Transaction(Base):
         Index('idx_transactions_date_amount', 'date', 'amount'),
         Index('idx_transactions_category_user', 'category', 'user_id'),
         Index('idx_transactions_document_user', 'document_id', 'user_id'),
-        Index('idx_transactions_amount_type', 'amount', 'type')
+        Index('idx_transactions_amount_type', 'amount', 'type'),
+        Index('idx_transactions_currency', 'original_currency', 'user_id'),
     )
     
 class ExtractedTransactions(Base):
@@ -110,11 +117,17 @@ class ExtractedTransactions(Base):
     is_processed = Column(Boolean, default=True)
     processed_at = Column(DateTime(timezone=True), nullable=True)
     
+    # Currency tracking columns
+    original_currency = Column(String(3), default='USD', nullable=True)
+    original_amount = Column(Float, nullable=True)
+    currency_symbol = Column(String(10), nullable=True)
+    
     # Indexing
     __table_args__ = (
         Index('idx_extracted_txn_user_date', 'user_id', 'date'),
         Index('idx_extracted_txn_user_year', 'user_id', 'year'),
         Index('idx_extracted_txn_document', 'document_id'),
+        Index('idx_extracted_txn_currency', 'original_currency', 'user_id'),
     )
 
 class MonthlySummary(Base):

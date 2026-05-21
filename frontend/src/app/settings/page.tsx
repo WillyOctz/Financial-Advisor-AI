@@ -16,6 +16,8 @@ import TwoFactorSettings from "@/components/forms/TwoFactorSetting";
 import CurrencySwitcher from "@/components/forms/CurrencySwitcher";
 import Link from "next/link";
 import ProfileForm from "@/components/forms/ProfileForm";
+import { apiClient } from "@/lib/api/client";
+import { useAuth } from "../../../contexts/AuthContexts";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -43,6 +45,16 @@ export default function SettingsPage() {
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  
+  // Password change states
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  
+  const { refreshUser } = useAuth();
 
   const tabs = [
     { id: "profile", label: "Profile", icon: User },
@@ -50,6 +62,85 @@ export default function SettingsPage() {
     // { id: "notifications", label: "Notifications", icon: Bell },
     { id: "preferences", label: "Preferences", icon: SettingsIcon },
   ];
+
+  /**
+   * Handle password change submission
+   * 
+   * Flow:
+   * 1. Validate inputs (fields not empty, passwords match)
+   * 2. Send request to backend API
+   * 3. Handle response (success or error)
+   * 4. Clear form and show feedback
+   */
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Clear previous messages
+    setPasswordError("");
+    setPasswordSuccess("");
+    
+    // Step 1: Frontend validation
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError("All fields are required");
+      return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New passwords do not match");
+      return;
+    }
+    
+    if (newPassword.length < 8) {
+      setPasswordError("Password must be at least 8 characters long");
+      return;
+    }
+    
+    try {
+      setIsChangingPassword(true);
+      
+      // Step 2: Send request to backend
+      const response = await apiClient.post("/users/change-password", {
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
+      
+      // Step 3: Handle success
+      if (response.data.success) {
+        setPasswordSuccess(response.data.message);
+        
+        // Clear form fields
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        
+        // Optional: Refresh user data
+        await refreshUser();
+      }
+      
+    } catch (error: any) {
+      // Step 4: Handle errors
+      console.error("Password change error:", error);
+      
+      if (error.response?.data?.detail) {
+        // Backend validation error (e.g., wrong current password)
+        if (Array.isArray(error.response.data.detail)) {
+          // Pydantic validation errors
+          setPasswordError(
+            error.response.data.detail
+              .map((err: any) => err.msg)
+              .join(", ")
+          );
+        } else {
+          // Custom error message from backend
+          setPasswordError(error.response.data.detail);
+        }
+      } else {
+        setPasswordError("Failed to change password. Please try again.");
+      }
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-linear-to-br from-blue-950 via-indigo-950 to-slate-950 relative overflow-hidden">
@@ -146,42 +237,73 @@ export default function SettingsPage() {
                     </p>
                   </div>
 
-                  {/* Change Password */}
-                  <div className="bg-slate-800/30 rounded-xl p-5 space-y-4">
+                  {/* Change Password Form */}
+                  <form onSubmit={handlePasswordChange} className="bg-slate-800/30 rounded-xl p-5 space-y-4">
                     <h3 className="text-lg font-semibold text-white">
                       Change Password
                     </h3>
+                    
+                    {/* Error Message */}
+                    {passwordError && (
+                      <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3 text-red-400 text-sm">
+                        {passwordError}
+                      </div>
+                    )}
+                    
+                    {/* Success Message */}
+                    {passwordSuccess && (
+                      <div className="bg-green-500/10 border border-green-500/50 rounded-lg p-3 text-green-400 text-sm">
+                        {passwordSuccess}
+                      </div>
+                    )}
+                    
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-2">
                         Current Password
                       </label>
                       <PasswordInput
-                        placeholder="••••••••"
-                        className="bg-slate-800/50 border-slate-600/50 text-white"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        placeholder="Enter current password"
+                        className="w-full px-4 py-2 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                     </div>
+                    
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-2">
                         New Password
                       </label>
                       <PasswordInput
-                        placeholder="••••••••"
-                        className="bg-slate-800/50 border-slate-600/50 text-white"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Enter new password"
+                        className="w-full px-4 py-2 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       />
+                      <p className="text-xs text-slate-500 mt-1">
+                        Must be at least 8 characters with uppercase and digit
+                      </p>
                     </div>
+                    
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-2">
                         Confirm New Password
                       </label>
                       <PasswordInput
-                        placeholder="••••••••"
-                        className="bg-slate-800/50 border-slate-600/50 text-white"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Confirm new password"
+                        className="w-full px-4 py-2 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                     </div>
-                    <Button className="bg-linear-to-r from-indigo-600 to-purple-600">
-                      Update Password
+                    
+                    <Button 
+                      type="submit"
+                      disabled={isChangingPassword}
+                      className="bg-linear-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50"
+                    >
+                      {isChangingPassword ? "Updating..." : "Update Password"}
                     </Button>
-                  </div>
+                  </form>
 
                   {/* Two-Factor Authentication */}
                   <TwoFactorSettings />
@@ -271,64 +393,6 @@ export default function SettingsPage() {
 
                   {/* Currency Switcher */}
                   <CurrencySwitcher />
-
-                  {/* Dark Mode */}
-                  {/*<div className="flex items-center justify-between p-4 bg-slate-800/30 rounded-xl">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-linear-to-br from-slate-700 to-slate-800 flex items-center justify-center">
-                        {darkMode ? (
-                          <Moon className="w-5 h-5 text-indigo-400" />
-                        ) : (
-                          <Sun className="w-5 h-5 text-amber-400" />
-                        )}
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-white">Dark Mode</h3>
-                        <p className="text-sm text-slate-400">
-                          Toggle dark/light theme
-                        </p>
-                      </div>
-                    </div>
-                    <motion.button
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => setDarkMode(!darkMode)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        darkMode ? "bg-indigo-600" : "bg-slate-700"
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          darkMode ? "translate-x-6" : "translate-x-1"
-                        }`}
-                      />
-                    </motion.button>
-                  </div>*/}
-
-                  {/* Danger Zone */}
-                  {/*<div className="bg-red-500/10 border border-red-500/30 rounded-xl p-5">
-                    <div className="flex items-center gap-2 mb-4">
-                      <AlertCircle className="w-5 h-5 text-red-400" />
-                      <h3 className="text-lg font-semibold text-red-400">
-                        Danger Zone
-                      </h3>
-                    </div>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-white">
-                            Delete Account
-                          </p>
-                          <p className="text-sm text-slate-400">
-                            Permanently delete your account and data
-                          </p>
-                        </div>
-                        <Button variant="destructive" size="sm">
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  </div>*/}
                 </motion.div>
               )}
             </motion.div>
