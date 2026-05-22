@@ -159,9 +159,8 @@ class DocumentService:
                     # currency detector on this part
                     try:
                         usd_amount, detected_currency, currency_symbol = self.currency_detector.process_amount_string(amount_str)
-                        original_amount = usd_amount if detected_currency == 'USD' else None
                         
-                        # if currency was detected, get the original amount before conversion
+                        # get original amount before conversion to USD
                         if detected_currency != 'USD':
                             # parse original amount without conversion
                             _, original_amt = self.currency_detector.detect_currency_from_string(amount_str)

@@ -24,6 +24,9 @@ CURRENCY_PATTERNS = {
     # symbol before number: $1.234.56 or Rp.1.234.567
     r'([€$£¥₱₫฿]|Rp|RM|S\$)\s*([0-9]{1,3}(?:[,.]?[0-9]{3})*(?:[,.][0-9]{1,2})?)',
     
+    # for Rp1.234.567 currency format in excel
+    r'([€$£¥₱₫฿]|Rp|RM|S\$)\s*([0-9]{1,3}(?:[.,]?[0-9]{3})*(?:[,.][0-9]{1,2})?)',
+    
     # number before symbol: 1234.56 USD or 1.234.567 IDR
     r'([0-9]{1,3}(?:[,.]?[0-9]{3})*(?:[,.][0-9]{1,2})?)\s*([A-Z]{3}|rupiah)',
     
@@ -105,12 +108,11 @@ class CurrencyDetector:
         
         # determine decimal seperator based on currency
         if currency in ['IDR']:
-            if comma_count > 0:
-                numeric_str = numeric_str.replace('.', '')
-                numeric_str = numeric_str.replace('.', '.')
+            numeric_str = numeric_str.replace('.', '')
+            # replace comma with period for decimal point
+            numeric_str = numeric_str.replace(',', '.')
         else:
-            if comma_count > 0:
-                numeric_str = numeric_str.replace('.', '')
+            numeric_str = numeric_str.replace(',', '.')
                 
         is_negative = numeric_str.startswith('-') or numeric_str.startswith('(')
         numeric_str = numeric_str.replace('(', '').replace(')', '').replace('-', '')
@@ -125,11 +127,15 @@ class CurrencyDetector:
         
     def infer_currency_from_format(self, numeric_str: str) -> str:
         """Infer currency from number format when no symbol is present"""
+        # checking IDR currency with periods as thousand seperators and comma
+        if re.match(r'^[\d\.]+,\d{1,2}$', numeric_str) or (numeric_str.count('.') > 1 and ',' in numeric_str):
+            return 'IDR'
+        
         period_count = numeric_str.count('.')
         comma_count = numeric_str.count(',')
         
         # if multiple periods , likely IDR format
-        if period_count > 1:
+        if period_count > 1 and comma_count == 1:
             return 'IDR'
         
         # if ends with comma and 2 digits after, likely IDR

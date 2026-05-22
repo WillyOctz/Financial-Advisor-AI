@@ -577,7 +577,7 @@ export default function TwoFactorSettings() {
       {status?.enabled && !setupStep && (
         <div className="space-y-6">
           {/* Backup Codes Management */}
-          <div className="bg-white rounded-lg shadow-sm border p-6">
+          <div className="bg-slate-800/30 rounded-lg shadow-sm border p-6">
             <h2 className="text-xl font-semibold mb-4">Backup Codes</h2>
             <p className="text-gray-600 mb-4">
               You have <strong>{status.remaining_backup_codes}</strong> backup
@@ -601,7 +601,7 @@ export default function TwoFactorSettings() {
               <h3 className="font-semibold text-yellow-800 mb-3">
                 Your New Backup Codes
               </h3>
-              <div className="bg-white rounded border border-yellow-300 p-4 mb-4">
+              <div className="bg-slate-800/30 rounded border border-yellow-300 p-4 mb-4">
                 <div className="grid grid-cols-2 gap-2 font-mono text-sm">
                   {setupData.backup_codes.map((code, index) => (
                     <div
@@ -624,7 +624,7 @@ export default function TwoFactorSettings() {
           )}
 
           {/* Disable 2FA */}
-          <div className="bg-white rounded-lg shadow-sm border p-6">
+          <div className="bg-slate-800/30 rounded-lg shadow-sm border p-6">
             <h2 className="text-xl font-semibold mb-4 text-red-600">
               Disable Two-Factor Authentication
             </h2>
