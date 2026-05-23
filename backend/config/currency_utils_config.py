@@ -22,10 +22,7 @@ CURRENCY_SYMBOL = {
 
 CURRENCY_PATTERNS = {
     # symbol before number: $1.234.56 or Rp.1.234.567
-    r'([€$£¥₱₫฿]|Rp|RM|S\$)\s*([0-9]{1,3}(?:[,.]?[0-9]{3})*(?:[,.][0-9]{1,2})?)',
-    
-    # for Rp1.234.567 currency format in excel
-    r'([€$£¥₱₫฿]|Rp|RM|S\$)\s*([0-9]{1,3}(?:[.,]?[0-9]{3})*(?:[,.][0-9]{1,2})?)',
+    r'([€$£¥₱₫฿]|Rp\.?|RM|S\$)\s*([0-9]{1,3}(?:[,.]?[0-9]{3})*(?:[,.][0-9]{1,2})?)',
     
     # number before symbol: 1234.56 USD or 1.234.567 IDR
     r'([0-9]{1,3}(?:[,.]?[0-9]{3})*(?:[,.][0-9]{1,2})?)\s*([A-Z]{3}|rupiah)',
@@ -61,8 +58,18 @@ class CurrencyDetector:
             symbol = match.group(1)
             numeric_part = match.group(2)
             original_symbol = symbol
-            detected_currency = CURRENCY_SYMBOL.get(symbol.upper(), CURRENCY_SYMBOL.get(symbol, None))
+            detected_currency = CURRENCY_SYMBOL.get(symbol.upper().replace('.', ''), CURRENCY_SYMBOL.get(symbol.replace('.', ''), None))
             
+            logger.debug(f"Pattern 1 matched: symbol={symbol}, numeric={numeric_part}, currency={detected_currency}")
+            if detected_currency:
+                try:
+                    clean_number = self.parse_numeric_value(numeric_part, detected_currency)
+                    logger.info(f"Currency detected from symbol: {amount_str} -> {clean_number} {detected_currency}")
+                    return (detected_currency, clean_number, original_symbol)
+                except Exception as e:
+                    logger.warning(f"Failed to parse with detected currency {detected_currency}: {e}")
+            
+        # pattern 2: number before symbol format   
         if not detected_currency:
             match = re.search(CURRENCY_PATTERNS[1], amount_str, re.IGNORECASE)
             if match:
@@ -70,6 +77,14 @@ class CurrencyDetector:
                 code = match.group(2)
                 original_symbol = code
                 detected_currency = CURRENCY_SYMBOL.get(code.upper(), None)
+                
+                if detected_currency:
+                    try:
+                        clean_number = self.parse_numeric_value(numeric_part, detected_currency)
+                        logger.info(f"Currency Pattern symbol before number were detected: {amount_str} -> {clean_number} {detected_currency}")
+                        return (detected_currency, clean_number, original_symbol)
+                    except Exception as e:
+                        logger.warning(f"Failed to parse with detected currency {detected_currency}: {e}")
                 
         if not detected_currency:
             match = re.search(CURRENCY_PATTERNS[2], amount_str)
@@ -108,11 +123,23 @@ class CurrencyDetector:
         
         # determine decimal seperator based on currency
         if currency in ['IDR']:
-            numeric_str = numeric_str.replace('.', '')
-            # replace comma with period for decimal point
-            numeric_str = numeric_str.replace(',', '.')
+            if comma_count > 0:
+                numeric_str = numeric_str.replace('.', '') # remove thousand seperator
+                numeric_str = numeric_str.replace(',', '.') # comma of decimal point 
+            else:
+                numeric_str = numeric_str.replace(',', '.')
+        
+        # USD and others currency format 
         else:
-            numeric_str = numeric_str.replace(',', '.')
+            if period_count > 1 and comma_count <= 1:
+                logger.warning(f"USD currency but IDR format detected in '{numeric_str}', treating as IDR")
+                if comma_count > 0:
+                    numeric_str = numeric_str.replace('.', '')
+                    numeric_str = numeric_str.replace(',', '.')
+                else:
+                    numeric_str = numeric_str.replace('.', '')
+            else:
+                numeric_str = numeric_str.replace(',', '')
                 
         is_negative = numeric_str.startswith('-') or numeric_str.startswith('(')
         numeric_str = numeric_str.replace('(', '').replace(')', '').replace('-', '')
@@ -135,19 +162,30 @@ class CurrencyDetector:
         comma_count = numeric_str.count(',')
         
         # if multiple periods , likely IDR format
-        if period_count > 1 and comma_count == 1:
+        if period_count >= 2:
+            logger.info("Multiple periods detected -> IDR")
             return 'IDR'
         
-        # if ends with comma and 2 digits after, likely IDR
-        if re.search(r',[0-9]{2}$', numeric_str):
+        # period before comma = European/IDR format currencies
+        if period_count > 0 and comma_count > 0:
+            period_pos = numeric_str.rfind('.')
+            comma_pos = numeric_str.rfind(',')
+            if period_pos < comma_pos:
+                logger.debug("Period before comma -> IDR")
+                return 'IDR'
+            
+        # ends with comma + digits = IDR decimal (1.234,56 or 1234,56)
+        if re.search(r',[0-9]{1,2}$', numeric_str):
+            logger.debug("Ends with comma+digits -> IDR")
             return 'IDR'
         
-        # if ends with period and 2 digits, likely USD
-        if re.search(r'\.[0-9]{2}$', numeric_str):
+        # ends with period + 2 digits and only one period = USD (1,234.56)
+        if re.search(r'\.[0-9]{2}$', numeric_str) and period_count == 1:
+            logger.debug("Single period at end with 2 decimals -> USD")
             return 'USD'
         
         return 'USD'
-    
+     
     def convert_to_base_currency(self, amount: float, from_currency: str) -> float:
         """Convert amount from detected currency to base currency (USD)"""
         if from_currency == self.base_currency:

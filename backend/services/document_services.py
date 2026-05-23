@@ -1015,11 +1015,12 @@ class EnhancedDocumentService(DocumentService):
                 if pd.isna(row.get(amount_col)):
                     continue
 
-                # Parse amount
+                # Parse amount with currency detection
                 amount_raw = row[amount_col]
-                amount = self._parse_amount(amount_raw)
-
-                if pd.isna(amount):
+                usd_amount, detected_currency, original_amount, currency_symbol = self.parse_amount_with_currency(amount_raw)
+                
+                if pd.isna(usd_amount):
+                    logger.debug(f"Row {index}: Skipping - amount parsing failed")
                     continue
 
                 # Parse date 
@@ -1031,7 +1032,7 @@ class EnhancedDocumentService(DocumentService):
                 description = str(row.get(desc_col, '')).strip() or "Unknown Transactions"
                 type_value = str(row.get(type_col, '')).strip()
 
-                transaction_type = self._determine_transaction_type(type_value, amount, description)
+                transaction_type = self._determine_transaction_type(type_value, usd_amount, description)
                 # Categorize transaction
                 category = categorize_transaction(description, db)
 
@@ -1053,7 +1054,7 @@ class EnhancedDocumentService(DocumentService):
                         month_str = date_obj.strftime('%Y-%m')
                         
                 transaction_hash = hashlib.sha256(
-                    f"{user_id}:{date_obj.strftime('%Y-%m-%d')}:{description[:100]}:{amount:.2f}:{transaction_type}:{index}".encode()
+                    f"{user_id}:{date_obj.strftime('%Y-%m-%d')}:{description[:100]}:{usd_amount:.2f}:{transaction_type}:{index}".encode()
                 ).hexdigest()
 
                 # create transaction dictionary (not an object ORM)
@@ -1062,12 +1063,15 @@ class EnhancedDocumentService(DocumentService):
                     "user_id": user_id,
                     "date": date.to_pydatetime() if isinstance(date, pd.Timestamp) else date,
                     "description": description[:255], 
-                    "amount": float(amount),
+                    "amount": float(usd_amount),
                     "type": transaction_type,
                     "category": category,
                     "month": month_str,
                     "transaction_hash": transaction_hash,
-                    "created_at": datetime.now()
+                    "created_at": datetime.now(),
+                    "original_currency": detected_currency,
+                    "original_amount": float(original_amount) if not pd.isna(original_amount) else float(usd_amount),
+                    "currency_symbol": currency_symbol if currency_symbol else None
                 }
                 transactions_data.append(transaction_data)
                 
@@ -1076,7 +1080,7 @@ class EnhancedDocumentService(DocumentService):
                     "document_id": document_id,
                     "date": date_obj,
                     "description": description[:255],
-                    "amount": float(amount),
+                    "amount": float(usd_amount),
                     "type": transaction_type,
                     "category": category,
                     "raw_text": str(row.to_dict()),
@@ -1089,7 +1093,10 @@ class EnhancedDocumentService(DocumentService):
                     "year": date_obj.year,
                     "month": date_obj.month,
                     "is_processed": True,
-                    "processed_at": datetime.now()
+                    "processed_at": datetime.now(),
+                    "original_currency": detected_currency,
+                    "original_amount": float(original_amount) if not pd.isna(original_amount) else float(usd_amount),
+                    "currency_symbol": currency_symbol if currency_symbol else None
                 }
                 extracted_data.append(extracted_record)             
                 
@@ -1101,41 +1108,30 @@ class EnhancedDocumentService(DocumentService):
                   
         return transactions_data, extracted_data
     
-    def _parse_amount(self, amount_raw) -> float:
-        """Parse amount from various formats"""
+    def parse_amount_with_currency(self, amount_raw) -> Tuple[float, str, float, str]:
+        """Parse amount with currencies detector"""
         if pd.isna(amount_raw):
-            return float('nan')
+            return (float('nan'), 'USD', float('nan'), '')
     
         try:
-            # Convert to string if not already
+            # convert to string
             if not isinstance(amount_raw, str):
                 amount_str = str(amount_raw)
             else:
                 amount_str = amount_raw
+                
+            usd_amount, detected_currency, currency_symbol = self.currency_detector.process_amount_string(amount_str)
+            _, original_amount, _ = self.currency_detector.detect_currency_from_string(amount_str)
+            
+            logger.debug(f"Parsed: '{amount_str}' -> USD: ${usd_amount:.2f}, Original: {original_amount} {detected_currency}, Symbol: {currency_symbol}")
+            return (usd_amount, detected_currency, original_amount, currency_symbol)
         
-            # Clean the amount string
-            amount_str = amount_str.replace('$', '').replace(',', '').replace(' ', '').strip()
+        except Exception as e:
+            logger.error(f"Currency-aware parsing failed for '{amount_raw}': {e}")
+            return (float('nan'), 'USD', float('nan'), '')
         
-            # Handle negative amounts
-            is_negative = amount_str.startswith('-') or amount_str.startswith('(')
-            if is_negative:
-                amount_str = amount_str.replace('-', '').replace('(', '').replace(')', '')
+    
         
-            # Convert to numeric
-            amount = pd.to_numeric(amount_str, errors='coerce')
         
-            if pd.isna(amount):
-                logger.info(f"⚠️ Amount parsing failed for raw value: {amount_raw}")
-                return float('nan')
-        
-            # Restore negative sign if needed
-            if is_negative:
-                amount = -amount
-        
-            logger.info(f"✅ Parsed amount: {amount}")
-            return float(amount)
-        except:
-            return float('nan')
-
     
 
