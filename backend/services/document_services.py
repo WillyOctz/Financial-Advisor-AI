@@ -1017,6 +1017,7 @@ class EnhancedDocumentService(DocumentService):
 
                 # Parse amount with currency detection
                 amount_raw = row[amount_col]
+                
                 usd_amount, detected_currency, original_amount, currency_symbol = self.parse_amount_with_currency(amount_raw)
                 
                 if pd.isna(usd_amount):

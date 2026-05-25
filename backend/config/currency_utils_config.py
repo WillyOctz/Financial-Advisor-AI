@@ -20,8 +20,8 @@ CURRENCY_SYMBOL = {
     'rupiah': 'IDR',
 }
 
-CURRENCY_PATTERNS = {
-    # symbol before number: $1.234.56 or Rp.1.234.567
+CURRENCY_PATTERNS = (
+    # symbol before number: $1.234.56 or Rp.1.234.567 or Rp 1.234.567
     r'([€$£¥₱₫฿]|Rp\.?|RM|S\$)\s*([0-9]{1,3}(?:[,.]?[0-9]{3})*(?:[,.][0-9]{1,2})?)',
     
     # number before symbol: 1234.56 USD or 1.234.567 IDR
@@ -29,7 +29,7 @@ CURRENCY_PATTERNS = {
     
     # just number: 
     r'^([0-9]{1,3}(?:[,.]?[0-9]{3})*(?:[,.][0-9]{1,2})?)$'
-}
+)
 
 class CurrencyDetector:
     """Detects currency from amount strings and converts to base currency (USD)"""
@@ -184,6 +184,7 @@ class CurrencyDetector:
             logger.debug("Single period at end with 2 decimals -> USD")
             return 'USD'
         
+        logger.debug("No clear pattern, defaulting to USD")
         return 'USD'
      
     def convert_to_base_currency(self, amount: float, from_currency: str) -> float:
