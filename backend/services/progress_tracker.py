@@ -11,7 +11,7 @@ class ProgressTracker:
     """simple version of progress tracker"""
     def __init__(self):
         self.task_status: Dict[str, dict] = {}
-        self.lock = threading.lock()
+        self.lock = threading.Rlock()
         
         logger.info("Initializing progress tracker...")
         
