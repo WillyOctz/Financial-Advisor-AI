@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from sqlalchemy.orm import Session
 from backend.models.database import FinancialDocument, Transaction, DocumentChunk, ExtractedTransactions
-from backend.services.progress_tracker import progress_tracker, ProgressStage
+from backend.services.progress_tracker import progress_tracker
 from backend.config.currency_utils_config import CurrencyDetector, detect_document_currency
 from backend.services.batch_processor import BatchProcessor
 from backend.db.redis_client import RedisCache, cached
@@ -690,7 +690,7 @@ class EnhancedDocumentService(DocumentService):
         
     #@cached(category='document_processing', ttl=timedelta(hours=1))
     def process_document(self, file_path: str, user_id: int, filename: str, column_mapping: dict, cancellation_check=None) -> dict:
-        """Optimized document processing with caching and progress tracking along with cancellation progress"""
+        """Optimized document processing with progress tracking along with cancellation progress"""
         # self track id
         self.current_user_id = user_id
         

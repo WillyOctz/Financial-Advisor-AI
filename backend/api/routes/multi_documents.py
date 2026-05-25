@@ -12,6 +12,7 @@ from backend.services.multi_document_services import (MultiDocumentProcessor, Do
 from backend.api.routes.auth import get_current_user
 from backend.models.database import User
 from backend.models.schemas import MultiUploadFormData, MultiUploadResponse
+from backend.services.progress_tracker import progress_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,15 @@ async def upload_multiple_documents(
             )
             
             # submit task
-            task_id = await multi_doc_processor.submit_document(task)
+            task_id = task.task_id
+            progress_tracker.set_progress(
+                user_id=user_id,
+                upload_id=upload_id,
+                stage_name="pending",
+                percentage=0,
+                details=f"Queued: {file.filename}",
+                metadata={"task_id": task_id}
+            )
             tasks.append(task)
             
             logger.info(f"Submitted document {file.filename} as task {task_id}")
@@ -149,17 +158,28 @@ async def get_task_status(
     current_user: User = Depends(get_current_user)
 ):
     """Get status of processing multi document task"""
-    status = await multi_doc_processor.get_task_status(task_id)
+    status_data = progress_tracker.get_status_by_task_id(task_id)
     
-    if status['status'] == 'not_found':
-        raise HTTPException(status_code=404, detail="Task not found")
+    if not status_data:
+        # check if task exists in processor queue
+        processor_status = await multi_doc_processor.get_task_status(task_id)
+        if processor_status.get('status') == 'not_found':
+            raise HTTPException(status_code=404, detail="Task not found")
+        return processor_status
     
-    # verify task belongs to a user
-    task_data = status.get('task') or status.get('result', {}).get('task')
-    if task_data and task_data.user_id != current_user.id:
+    if status_data.get('user_id') != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    return status
+    return {
+        "task_id": task_id,
+        "status": status_data.get("status", "unknown"),  # pending/processing/completed/failed
+        "stage": status_data.get("stage", ""),
+        "percentage": status_data.get("percentage", 0),
+        "details": status_data.get("details", ""),
+        "updated_at": status_data.get("updated_at"),
+        "is_complete": status_data.get("is_complete", False),
+        "is_error": status_data.get("is_error", False)
+    }
 
 @router.post("/task/{task_id}/cancel")
 async def cancel_task(
@@ -167,22 +187,30 @@ async def cancel_task(
     current_user: User = Depends(get_current_user)
 ):
     """cancel a processing task"""
-    # first verify that task belong to user
-    status = await multi_doc_processor.get_task_status(task_id)
+    status_data = progress_tracker.get_status_by_task_id(task_id)
     
-    if status['status'] == 'not_found':
+    if not status_data:
         raise HTTPException(status_code=404, detail="Task not found")
-
-    task_data = status.get('task') or status.get('result', {}).get('task')
-    if task_data and task_data.user_id != current_user.id:
+    
+    if status_data.get('user_id') != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    success = await multi_doc_processor.cancel_task(task_id)
+    # cancel via progress tracker
+    upload_id = status_data.get('upload_id')
+    user_id = status_data.get('user_id')
+    
+    progress_tracker.cancel_upload(user_id, upload_id, "Cancelled by user")
+    
+    # try to cancel in multi document processor queue
+    try:
+        await multi_doc_processor.cancel_task(task_id)
+    except:
+        pass
     
     return {
-        "success": success,
+        "success": True,
         "task_id": task_id,
-        "message": "Task cancelled" if success else "Could not cancel task"
+        "message": "Task cancelled"
     }
     
 @router.get("/user-tasks")
@@ -192,45 +220,33 @@ async def get_user_tasks(
     limit: int = 50
 ):
     """get all tasks for the current user"""
+    
+    user_uploads = progress_tracker.get_all_user_uploads(current_user.id)
+    
+    # convert task format
     all_tasks = []
-    
-    # get tasks from all states
-    states = [
-        ("pending", multi_doc_processor.pending_tasks),
-        ("processing", multi_doc_processor.processing_tasks),
-        ("completed", multi_doc_processor.completed_tasks),
-        ("failed", multi_doc_processor.failed_tasks)
-    ]
-    
-    for state_name, state_dict in states:
-        for task_id, task_data in list(state_dict.items()):
-            if isinstance(task_data, DocumentTask):
-                task = task_data
-            elif isinstance(task_data, dict) and 'task' in task_data:
-                task = task_data['task']
-            else:
-                continue
-            
-            if task.user_id == current_user.id:
-                all_tasks.append({
-                    "task_id": task_id,
-                    "status": state_name,
-                    "filename": task.filename,
-                    "upload_id": task.upload_id,
-                    "priority": task.priority.name,
-                    "created_at": task.created_at.isoformat(),
-                    "dependencies": task.dependencies
-                })
-    
-    # apply filters
-    if status_filter:
-        all_tasks = [t for t in all_tasks if t['status'] == status_filter]
+    for upload in user_uploads:
+        task_id = upload.get("metadata", {}).get("task_id", "unknown")
+        all_tasks.append({
+            "task_id": task_id,
+            "upload_id": upload.get("upload_id"),
+            "status": upload.get("status"),
+            "stage": upload.get("stage"),
+            "percentage": upload.get("percentage"),
+            "details": upload.get("details"),
+            "updated_at": upload.get("updated_at"),
+            "is_complete": upload.get("is_complete"),
+            "is_error": upload.get("is_error")
+        })
         
-    # sort by creation time (newest first)
-    all_tasks.sort(key=lambda x: x['created_at'], reverse=True)
-    
-    return {
-        "tasks": all_tasks[:limit],
-        "total_count": len(all_tasks),
-        "filtered_count": len(all_tasks[:limit])
-    }
+        # apply filters
+        if status_filter:
+            all_tasks = [t for t in all_tasks if t['status'] == status_filter]
+            
+        all_tasks.sort(key=lambda x: x.get('updated_at', ''), reverse=True)
+        
+        return {
+            "tasks": all_tasks[:limit],
+            "total_count": len(all_tasks),
+            "filtered_count": len(all_tasks[:limit])
+        }
