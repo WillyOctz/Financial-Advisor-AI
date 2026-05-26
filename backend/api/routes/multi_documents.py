@@ -7,6 +7,7 @@ import tempfile
 import os
 import logging
 from datetime import datetime
+from functools import lru_cache
 
 from backend.services.multi_document_services import (MultiDocumentProcessor, DocumentTask, ProcessingPriority, multi_doc_processor)
 from backend.api.routes.auth import get_current_user
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-task_ownership_cache = dict[str, int] = {}
+task_ownership_cache: dict[str, int] = {}
 
 @router.post("/upload-multiple", response_model=MultiUploadResponse)
 async def upload_multiple_documents(
