@@ -52,7 +52,6 @@ export function useMultiUpload() {
       return false;
     }
 
-    // Validate all files have mappings
     const missingMappings = mappingsToUse.some((m) => !m);
     if (missingMappings) {
       toast({
@@ -68,7 +67,6 @@ export function useMultiUpload() {
     try {
       const formData = new FormData();
 
-      // Append all files
       filesToUpload.forEach((file) => {
         formData.append("files", file);
       });
@@ -78,7 +76,6 @@ export function useMultiUpload() {
       formData.append("priority", "medium");
       formData.append("dependencies_json", "[]");
 
-      // Get token from cookie
       const token =
         typeof document !== "undefined"
           ? document.cookie
@@ -106,21 +103,20 @@ export function useMultiUpload() {
 
       const data = await res.json();
 
-      // Initialize tasks from response
       const newTasks: UploadTask[] = data.task_ids.map((id: string, i: number) => ({
         id,
         filename: filesToUpload[i].name,
-        status: "pending" as const,
-        progress: 0,
+        status: "processing" as const,  // Just show processing, no intermediate states
+        progress: 50,  // Static 50% while processing
       }));
 
       setTasks(newTasks);
 
-      // SIMPLIFIED POLLING - No more SSE!
+      // ULTRA-SIMPLE POLLING: Just check every 10 seconds until done
       let pollCount = 0;
-      const maxPolls = 120; // 10 minutes max (120 * 5 seconds)
+      const maxPolls = 60; // 10 minutes max
       
-      const pollStatuses = async () => {
+      const checkCompletion = async () => {
         pollCount++;
         
         try {
@@ -132,8 +128,8 @@ export function useMultiUpload() {
                   ?.split("=")[1]
               : undefined;
 
-          // Batch fetch all statuses in parallel (much more efficient!)
-          const statusPromises = newTasks.map(async (task: UploadTask) => {
+          // Single batch request for all statuses
+          const statusPromises = newTasks.map(async (task) => {
             try {
               const statusRes = await fetch(
                 `${process.env.NEXT_PUBLIC_API || "http://localhost:8000/api/v1"}/task-status/${task.id}`,
@@ -143,35 +139,32 @@ export function useMultiUpload() {
                 },
               );
               
-              if (!statusRes.ok) {
-                console.warn(`Failed to fetch status for task ${task.id}`);
-                return null;
-              }
+              if (!statusRes.ok) return null;
               return await statusRes.json();
-            } catch (error) {
-              console.error(`Error fetching status for task ${task.id}:`, error);
+            } catch {
               return null;
             }
           });
 
           const statuses = await Promise.all(statusPromises);
 
-          // Update tasks based on status
+          // Only care about final states: completed or failed
           const updatedTasks = newTasks.map((task, index) => {
             const statusData = statuses[index];
             if (!statusData) return task;
 
+            const isDone = statusData.status === "completed" || statusData.status === "failed";
+
             return {
               ...task,
               status: statusData.status as UploadTask["status"],
-              progress: statusData.percentage || 0,
+              progress: isDone ? 100 : 50,  // 50% = processing, 100% = done
               error: statusData.error,
             };
           });
 
           setTasks(updatedTasks);
 
-          // Check if all tasks are complete
           const allDone = updatedTasks.every(
             (t) => t.status === "completed" || t.status === "failed"
           );
@@ -180,54 +173,42 @@ export function useMultiUpload() {
             setIsProcessing(false);
             onComplete?.();
             
-            const successCount = updatedTasks.filter(
-              (t) => t.status === "completed"
-            ).length;
-            
-            const failedCount = updatedTasks.filter(
-              (t) => t.status === "failed"
-            ).length;
+            const successCount = updatedTasks.filter((t) => t.status === "completed").length;
+            const failedCount = updatedTasks.filter((t) => t.status === "failed").length;
             
             toast({
-              title: "Processing Complete!",
-              description: `${successCount} succeeded${failedCount > 0 ? `, ${failedCount} failed` : ''}.`,
+              title: "Complete!",
+              description: `${successCount} file(s) processed${failedCount > 0 ? `, ${failedCount} failed` : ''}.`,
               duration: 4000,
             });
-            return; // Stop polling
+            return;
           }
 
-          // Continue polling if not done and under max polls
+          // Continue checking every 10 seconds (much less aggressive)
           if (pollCount < maxPolls) {
-            // Adaptive polling: 
-            // - First 6 polls (30s): every 2s (fast feedback)
-            // - Next 14 polls (70s): every 5s (normal)
-            // - After that: every 10s (slower for long tasks)
-            const delay = pollCount <= 6 ? 2000 : pollCount <= 20 ? 5000 : 10000;
-            setTimeout(pollStatuses, delay);
+            setTimeout(checkCompletion, 10000);  // 10 seconds
           } else {
-            // Timeout
             setIsProcessing(false);
             toast({
-              title: "Processing Timeout",
-              description: "Some files are still processing. Check back later.",
+              title: "Timeout",
+              description: "Processing is taking longer than expected. Check back later.",
               variant: "destructive",
             });
           }
         } catch (error) {
-          console.error("Polling error:", error);
-          // Continue polling on error (network glitch, etc.)
+          console.error("Status check error:", error);
           if (pollCount < maxPolls) {
-            setTimeout(pollStatuses, 5000);
+            setTimeout(checkCompletion, 10000);
           }
         }
       };
 
-      // Start polling after 1 second (give backend time to initialize)
-      setTimeout(pollStatuses, 1000);
+      // Start checking after 5 seconds (give backend time to start)
+      setTimeout(checkCompletion, 5000);
 
       toast({
         title: "Upload Started",
-        description: `Processing ${filesToUpload.length} file(s) in parallel...`,
+        description: `Processing ${filesToUpload.length} file(s)...`,
         duration: 2000,
       });
       
@@ -258,11 +239,6 @@ export function useMultiUpload() {
       });
     } catch (error) {
       console.error("Failed to cancel task:", error);
-      toast({
-        title: "Cancel Failed",
-        description: "Could not cancel the task.",
-        variant: "destructive",
-      });
     }
   };
 

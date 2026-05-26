@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+task_ownership_cache = dict[str, int] = {}
+
 @router.post("/upload-multiple", response_model=MultiUploadResponse)
 async def upload_multiple_documents(
     files: List[UploadFile] = File(..., description="Multiple files to upload"), 
@@ -112,6 +114,8 @@ async def upload_multiple_documents(
             
             # submit task
             task_id = task.task_id
+            task_ownership_cache[task_id] = user_id
+            
             progress_tracker.set_progress(
                 user_id=user_id,
                 upload_id=upload_id,
@@ -158,16 +162,22 @@ async def get_task_status(
     current_user: User = Depends(get_current_user)
 ):
     """Get status of processing multi document task"""
+    cached_user_id = task_ownership_cache.get(task_id)
+    
+    if cached_user_id and cached_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
     status_data = progress_tracker.get_status_by_task_id(task_id)
     
     if not status_data:
         # check if task exists in processor queue
         processor_status = await multi_doc_processor.get_task_status(task_id)
         if processor_status.get('status') == 'not_found':
+            task_ownership_cache.pop(task_id, None)
             raise HTTPException(status_code=404, detail="Task not found")
         return processor_status
     
-    if status_data.get('user_id') != current_user.id:
+    if not cached_user_id and status_data.get('user_id') != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
     
     return {
@@ -187,12 +197,17 @@ async def cancel_task(
     current_user: User = Depends(get_current_user)
 ):
     """cancel a processing task"""
+    cached_user_id = task_ownership_cache.get(task_id)
+    
+    if cached_user_id and cached_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
     status_data = progress_tracker.get_status_by_task_id(task_id)
     
     if not status_data:
         raise HTTPException(status_code=404, detail="Task not found")
     
-    if status_data.get('user_id') != current_user.id:
+    if not cached_user_id and status_data.get('user_id') != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
     
     # cancel via progress tracker

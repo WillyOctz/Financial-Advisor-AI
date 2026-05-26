@@ -11,7 +11,7 @@ class ProgressTracker:
     """simple version of progress tracker"""
     def __init__(self):
         self.task_status: Dict[str, dict] = {}
-        self.lock = threading.Rlock()
+        self.lock = threading.RLock()
         
         logger.info("Initializing progress tracker...")
         
@@ -131,7 +131,7 @@ class ProgressTracker:
         with self.lock:
             tasks_to_remove = []
             
-            for task_key, status in self.task_status_items():
+            for task_key, status in self.task_status.items():
                 if status["status"] in ["completed", "failed"]:
                     if status["timestamp"] < cutoff:
                         tasks_to_remove.append(task_key)
