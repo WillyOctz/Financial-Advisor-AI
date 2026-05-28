@@ -390,7 +390,8 @@ class MultiDocumentProcessor:
             db = get_background_session()
             
             # initialize services with this session
-            document_service = EnhancedDocumentService(db)
+            user_currency = task.metadata.get("user_currency", "USD")
+            document_service = EnhancedDocumentService(db, user_currency=user_currency)
             document_service.current_upload_id = task.upload_id
             document_service.current_user_id = task.user_id
             document_service.enable_rate_limiting = self.enable_rate_limiting
@@ -721,5 +722,3 @@ multi_doc_processor = MultiDocumentProcessor(
     enable_rate_limiting=True,
     enable_memory_management=True
 )
-        
-    

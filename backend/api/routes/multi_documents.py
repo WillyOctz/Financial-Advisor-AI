@@ -47,6 +47,9 @@ async def upload_multiple_documents(
         if len(mappings_list) != len(files):
             raise HTTPException(status_code=400, detail="Mappings count mismatch")
         
+        user_currency = current_user.currency if hasattr(current_user, 'currency') and current_user.currency else 'USD'
+        logger.info(f"User {user_id} currency: {user_currency}")
+        
         priority_map = {
             "high": ProcessingPriority.HIGH,
             "medium": ProcessingPriority.MEDIUM,
@@ -90,7 +93,8 @@ async def upload_multiple_documents(
                     "original_filename": file.filename,
                     "file_size": len(content),
                     "content_type": file.content_type,
-                    "upload_timestamp": datetime.now().isoformat()
+                    "upload_timestamp": datetime.now().isoformat(),
+                    "user_currency": user_currency,
                 }
             )
             

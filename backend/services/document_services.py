@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 from typing import Optional
 from sqlalchemy.orm import Session
-from backend.api.routes.multi_documents import update_task_status
 from backend.models.database import FinancialDocument, Transaction, DocumentChunk, ExtractedTransactions
 from backend.config.currency_utils_config import CurrencyDetector, detect_document_currency
 from backend.services.batch_processor import BatchProcessor
