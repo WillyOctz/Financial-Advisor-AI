@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from backend.models.database import Transaction, DocumentChunk
 from sqlalchemy.dialects.postgresql import insert
 from backend.db.redis_client import cache
-from backend.services.progress_tracker import progress_tracker
 from backend.services.vector_search import VectorSearchService
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -1312,31 +1311,9 @@ class BatchProcessor:
             return "Transaction data unavailable"
         
     def set_progress(self, stage: str, percentage: int, details: str = ""):
-        """Progress tracker"""
-        percentage = max(0, min(100, percentage))
+        """No operation for progress track. just keeping it at bay to make it work"""
+        pass
         
-        # call progress callback if provided
-        if self.progress_callback:
-            try:
-                self.progress_callback(stage, percentage, details)
-            except Exception as e:
-                logger.error(f"Progress callback failed: {e}")
-                
-        # update progress tracker
-        if self.upload_id and self.user_id:
-            try:
-                progress_tracker.set_progress(
-                    self.user_id,
-                    self.upload_id,
-                    stage,
-                    percentage,
-                    details
-                )
-            except Exception as e:
-                logger.error(f"Failed to update progress tracker: {e}")
-                
-        logger.info(f"Progress: {stage} - {percentage}% - {details}")
-
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Get performance metrics so it can be evaluated"""
         if self.metrics['batch_times']:
@@ -1368,6 +1345,3 @@ class BatchProcessor:
             time.sleep(0.1)
             
         logger.info(f"Batch processor shutdown complete, {len(self.active_futures)} futures remaining")
-        
-
-        

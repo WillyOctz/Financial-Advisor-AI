@@ -364,6 +364,10 @@ class MultiDocumentProcessor:
             # update task status (thread-safe operation)
             await self.update_task_completion(task_id, task, result, processing_time)
             
+            # notify the status cache so frontend polling stops
+            from backend.api.routes.multi_documents import update_task_status
+            update_task_status(task_id, "completed")
+            
             logger.info(f"Completed: {task.filename} ({processing_time:.1f}s, {transaction_count}txns)")
             
             # record rate limit success
@@ -373,6 +377,10 @@ class MultiDocumentProcessor:
         except Exception as e:
             processing_time = time.time() - start_time
             await self.handle_task_failure(task_id, task, e, processing_time)
+            
+            # notify the status cache so frontend polling stops
+            from backend.api.routes.multi_documents import update_task_status
+            update_task_status(task_id, "failed")
             
         finally:
             # shutdown executor
