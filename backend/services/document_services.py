@@ -1,8 +1,9 @@
 import pandas as pd
 import numpy as np
+from typing import Optional
 from sqlalchemy.orm import Session
+from backend.api.routes.multi_documents import update_task_status
 from backend.models.database import FinancialDocument, Transaction, DocumentChunk, ExtractedTransactions
-from backend.services.progress_tracker import progress_tracker
 from backend.config.currency_utils_config import CurrencyDetector, detect_document_currency
 from backend.services.batch_processor import BatchProcessor
 from backend.db.redis_client import RedisCache, cached
@@ -14,16 +15,111 @@ from datetime import datetime, timedelta
 import os
 import openpyxl
 import traceback
-from collections import defaultdict
+from collections import Counter
 import logging
 
 logger = logging.getLogger(__name__)
 
-class DocumentService:
-    def __init__(self, db: Session):
-        self.db = db
-        self.currency_detector = CurrencyDetector(base_currency='USD')
+class ExcelCurrencyReader:
+    """Reading excel file format for currency detector"""
     
+    EXCEL_CURRENCY_MAP = {
+        '$': 'USD',
+        'Rp': 'IDR',
+    }
+    
+    def detect_currency_from_format(self, number_format: str) -> Optional[str]:
+        """Extract currency from excel number format string"""
+        if not number_format:
+            return None
+        
+        for symbol, currency in self.EXCEL_CURRENCY_MAP.items():
+            if symbol in number_format:
+                logger.debug(f"Found currency '{currency}' from format: {number_format}")
+                return currency 
+        return None
+    
+    def detect_currency_from_excel(self, file_path: str, amount_column: str = 'Amount') -> Optional[str]:
+        """detect currency from excel cell formatting"""
+        try:
+            workbook = openpyxl.load_workbook(file_path, data_only=False)
+            worksheet = workbook.active
+            
+            # find amount column index
+            header_row = list(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))[0]
+            amount_col_idx = None
+            
+            for idx, cell_value in enumerate(header_row, start=1):
+                if str(cell_value).strip().lower() == amount_column.idx():
+                    amount_col_idx = idx
+                    break
+                
+            if amount_col_idx is None:
+                logger.warning(f"Column '{amount_column}' not found in Excel headers")
+                workbook.close()
+                return None
+            
+            # get column letter
+            col_letter = openpyxl.utils.get_column_letter(amount_col_idx)
+            
+            # sample the first 10 data rows to detect currency format
+            detected_currencies = []
+            for row_idx in range(2, min(12, worksheet.max_row + 1)):
+                cell = worksheet[f'{col_letter}{row_idx}']
+                
+                if cell.value is not None:
+                    number_format = cell.number_format
+                    logger.debug(f"Cell {col_letter}{row_idx}: value={cell.value}, format='{number_format}'")
+                    
+                    currency = self.detect_currency_from_format(number_format)
+                    if currency:
+                        detected_currencies.append(currency)
+            
+            workbook.close()
+            
+            # determine predominant currency
+            if detected_currencies:
+                most_common = Counter(detected_currencies).most_common(1)[0][0]
+                logger.debug(f"Currency detected from Excel cell formatting: {most_common}")
+                return most_common
+            else:
+                logger.warning("No currency detected from Excel formatting")
+                return None
+        except Exception as e:
+            logger.error(f"❌ Error reading Excel formatting: {e}")
+            return None
+
+class DocumentService:
+    def __init__(self, db: Session, user_currency: str = None):
+        self.db = db
+        self.user_currency = self.user_currency
+        self.excel_reader = ExcelCurrencyReader()
+        self.currency_detector = CurrencyDetector(
+            base_currency='USD',
+            defauly_input_currency=user_currency
+        )
+        
+    def detect_file_currency(self, file_path: str, df: pd.DataFrame, amount_col: str) -> Optional[str]:
+        """Smart currency detection from file format"""
+        detected_currency = None
+        
+        # for excel files
+        if file_path.endswith('.xlsx') or file_path.endswith('.xls'):
+            logger.info("Excel file detected - checking cell formatting...")
+            detected_currency = self.excel_reader.detect_currency_from_excel(file_path, amount_col)
+            
+            if detected_currency:
+                logger.info(f"Currency from Excel format: {detected_currency}")
+                return detected_currency
+            
+        # fallback to user preferences currency
+        if self.user_currency:
+            logger.info(f"Using user preference currency: {self.user_currency}")
+            return self.user_currency
+        
+        logger.warning("No currency detected, defaulting to USD")
+        return 'USD'
+            
     def _read_dataframe(self, file_path: str) -> pd.DataFrame:
         """Method to unify to read CSV or Excel files"""
         try:
@@ -121,14 +217,20 @@ class DocumentService:
             type_col = self._find_best_column_match(df.columns, column_mapping.get('type', 'type'))
 
             # detect document currency used
-            document_currency = detect_document_currency(df, amount_col)
-            logger.info(f"Document currency detected: {document_currency}")
+            detected_currency = self.detect_file_currency(file_path, df, amount_col)
+            logger.info(f"Final detected currency: {detected_currency}")
+            
+            # update currency detector with the detected currency
+            self.currency_detector = CurrencyDetector(
+                base_currency='USD',
+                default_input_currency=detected_currency
+            )
             
             # update financial document record with detected currency
             try:
                 doc = self.db.query(FinancialDocument).filter(FinancialDocument.id == document_id).first()
                 if doc:
-                    doc.document_currency = document_currency
+                    doc.document_currency = detected_currency
                     self.db.commit()
             except Exception as e:
                 logger.warning(f"Could not update document currency: {e}")
@@ -620,45 +722,14 @@ class EnhancedDocumentService(DocumentService):
         self.enable_rate_limiting = True
         
     def set_progress(self, stage_index: int, custom_details: str = None, metadata: dict = None):
-        """Update progress for SSE using stage definitions"""
-        if not self.current_upload_id or not self.current_user_id:
-            logger.warning(f"No upload ID or user ID set for progress tracking")
-            return
-        
-        stages = progress_tracker.stage_definitions.get("document_processing", [])
-        
-        if 0 <= stage_index < len(stages):
-            stage = stages[stage_index]
-            details = custom_details or stage.description
-            
-            percentage = stage.weight
-            
-            # ensuring a valid integer percentage
-            if isinstance(percentage, (int, float)):
-                percentage = int(percentage)
-            else:
-                percentage = 0
-            
-            progress_tracker.set_progress(
-                self.current_user_id,
-                self.current_upload_id,
-                stage.name,
-                stage.weight,
-                details,
-                metadata
-            )
-            
-            logger.info(f"Progress set: {stage.name} - {percentage}% - {details}")
-        else:
-            logger.error(f"Invalid stage index: {stage_index}")
+        """removed progress tracking"""
+        pass
             
     def check_cancellation(self) -> bool:
-        """Check if processing should be cancelled"""
-        if self.cancellation_checked:
-            return False
-        
+        """Check if processing was cancelled via cancellation manager"""  
         if self.current_upload_id and self.current_user_id:
-            cancelled = progress_tracker.is_cancelled(self.current_user_id, self.current_upload_id)
+            from backend.api.routes.documents import upload_cancellation_manager
+            cancelled = upload_cancellation_manager.is_cancelled(self.current_upload_id)
             if cancelled:
                 self.cancellation_checked = True
                 logger.info(f"Processing cancelled for upload {self.current_upload_id}")
@@ -742,34 +813,9 @@ class EnhancedDocumentService(DocumentService):
                 from backend.services.vector_search import VectorSearchService
                 vector_service = VectorSearchService(self.db)
                 
-                def batch_progress_callback(stage: str, percentage: int):
-                    """Callback from batch processor"""
-                    # Map batch processor stages to our stages
-                    if "transaction" in stage.lower():
-                        base = 60
-                        adjusted = min(70, base + int(percentage * 0.1))
-                        progress_tracker.set_progress(
-                            self.current_user_id,
-                            self.current_upload_id,
-                            "processing_batch",
-                            adjusted,
-                            stage
-                        )
-                    elif "embedding" in stage.lower():
-                        base = 80
-                        adjusted = min(90, base + int(percentage * 0.1))
-                        progress_tracker.set_progress(
-                            self.current_user_id,
-                            self.current_upload_id,
-                            "generating_embeddings",
-                            adjusted,
-                            stage
-                        )
-                
                 self.batch_processor = BatchProcessor(
                     batch_size=500,
                     max_workers=4,
-                    progress_callback=batch_progress_callback,
                     db=self.db,
                     vector_service=vector_service,
                     upload_id=self.current_upload_id,
@@ -868,17 +914,6 @@ class EnhancedDocumentService(DocumentService):
         except Exception as e:
             error_msg = str(e)[:200]
             logger.error(f"Document processing failed: {e}", exc_info=True)
-            
-            # update progress with error
-            if self.current_upload_id and self.current_user_id:
-                progress_tracker.set_progress(
-                    self.current_user_id,
-                    self.current_upload_id,
-                    "error",
-                    0,
-                    f"Processing failed: {error_msg}",
-                    {"error": error_msg, "error_type": type(e).__name__}
-                )
             try:
                 self.db.rollback()
             except:

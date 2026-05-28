@@ -7,9 +7,7 @@ import { useUser } from "./useUser";
 interface UploadTask {
   id: string;
   filename: string;
-  status: "pending" | "processing" | "completed" | "failed";
-  progress: number;
-  error?: string;
+  status: "processing" | "completed" | "failed";
 }
 
 export function useMultiUpload() {
@@ -103,20 +101,20 @@ export function useMultiUpload() {
 
       const data = await res.json();
 
+      // Initialize all as processing
       const newTasks: UploadTask[] = data.task_ids.map((id: string, i: number) => ({
         id,
         filename: filesToUpload[i].name,
-        status: "processing" as const,  // Just show processing, no intermediate states
-        progress: 50,  // Static 50% while processing
+        status: "processing" as const,
       }));
 
       setTasks(newTasks);
 
-      // ULTRA-SIMPLE POLLING: Just check every 10 seconds until done
+      // Poll every 15 seconds - MUCH less aggressive
       let pollCount = 0;
-      const maxPolls = 60; // 10 minutes max
+      const maxPolls = 40; // 10 minutes total
       
-      const checkCompletion = async () => {
+      const checkStatus = async () => {
         pollCount++;
         
         try {
@@ -128,10 +126,10 @@ export function useMultiUpload() {
                   ?.split("=")[1]
               : undefined;
 
-          // Single batch request for all statuses
+          // Check all tasks in one batch
           const statusPromises = newTasks.map(async (task) => {
             try {
-              const statusRes = await fetch(
+              const res = await fetch(
                 `${process.env.NEXT_PUBLIC_API || "http://localhost:8000/api/v1"}/task-status/${task.id}`,
                 {
                   credentials: "include",
@@ -139,8 +137,8 @@ export function useMultiUpload() {
                 },
               );
               
-              if (!statusRes.ok) return null;
-              return await statusRes.json();
+              if (!res.ok) return null;
+              return await res.json();
             } catch {
               return null;
             }
@@ -148,23 +146,20 @@ export function useMultiUpload() {
 
           const statuses = await Promise.all(statusPromises);
 
-          // Only care about final states: completed or failed
+          // Update task statuses
           const updatedTasks = newTasks.map((task, index) => {
             const statusData = statuses[index];
             if (!statusData) return task;
 
-            const isDone = statusData.status === "completed" || statusData.status === "failed";
-
             return {
               ...task,
               status: statusData.status as UploadTask["status"],
-              progress: isDone ? 100 : 50,  // 50% = processing, 100% = done
-              error: statusData.error,
             };
           });
 
           setTasks(updatedTasks);
 
+          // Check if all done
           const allDone = updatedTasks.every(
             (t) => t.status === "completed" || t.status === "failed"
           );
@@ -178,33 +173,33 @@ export function useMultiUpload() {
             
             toast({
               title: "Complete!",
-              description: `${successCount} file(s) processed${failedCount > 0 ? `, ${failedCount} failed` : ''}.`,
+              description: `${successCount} succeeded${failedCount > 0 ? `, ${failedCount} failed` : ''}`,
               duration: 4000,
             });
             return;
           }
 
-          // Continue checking every 10 seconds (much less aggressive)
+          // Continue polling
           if (pollCount < maxPolls) {
-            setTimeout(checkCompletion, 10000);  // 10 seconds
+            setTimeout(checkStatus, 15000);  // 15 seconds - very relaxed
           } else {
             setIsProcessing(false);
             toast({
               title: "Timeout",
-              description: "Processing is taking longer than expected. Check back later.",
+              description: "Processing is taking longer than expected",
               variant: "destructive",
             });
           }
         } catch (error) {
           console.error("Status check error:", error);
           if (pollCount < maxPolls) {
-            setTimeout(checkCompletion, 10000);
+            setTimeout(checkStatus, 15000);
           }
         }
       };
 
-      // Start checking after 5 seconds (give backend time to start)
-      setTimeout(checkCompletion, 5000);
+      // Wait 10 seconds before first check (give ETL time to start)
+      setTimeout(checkStatus, 10000);
 
       toast({
         title: "Upload Started",
@@ -230,15 +225,15 @@ export function useMultiUpload() {
       await apiClient.post(`/task/${taskId}/cancel`);
       setTasks((prev) =>
         prev.map((t) =>
-          t.id === taskId ? { ...t, status: "failed" as const, progress: 0 } : t
+          t.id === taskId ? { ...t, status: "failed" as const } : t
         ),
       );
       toast({
-        title: "Task Cancelled",
-        description: "The task has been cancelled.",
+        title: "Cancelled",
+        description: "Task cancelled successfully",
       });
     } catch (error) {
-      console.error("Failed to cancel task:", error);
+      console.error("Cancel failed:", error);
     }
   };
 
@@ -249,17 +244,11 @@ export function useMultiUpload() {
     setIsProcessing(false);
   };
 
-  const overallProgress =
-    tasks.length > 0
-      ? Math.round(tasks.reduce((acc, t) => acc + t.progress, 0) / tasks.length)
-      : 0;
-
   return {
     files,
     mappings,
     tasks,
     isProcessing,
-    overallProgress,
     addFiles,
     removeFile,
     updateMapping,

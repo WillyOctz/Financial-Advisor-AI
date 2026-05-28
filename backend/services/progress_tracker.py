@@ -123,9 +123,9 @@ class ProgressTracker:
         thread.start()
         logger.info(f"Cleanup thread started every 30 minutes")
         
-    def cleanup_old_tasks(self, max_hours_age: int = 1):
+    def cleanup_old_tasks(self, max_age_hours: int = 1):
         """Remove completed tasks older """
-        cutoff = time.time() - (max_hours_age * 3600)
+        cutoff = time.time() - (max_age_hours * 3600)
         removed_count = 0
         
         with self.lock:
