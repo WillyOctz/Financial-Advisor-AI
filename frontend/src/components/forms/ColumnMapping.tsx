@@ -150,7 +150,7 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
             // get the preview data
             preview = jsonData.slice(1, 4).map((row: any) => {
               return Object.fromEntries(
-                headers.map((header, index) => [header, row[index] || ""]),
+                headers.map((header, index) => [header, formatCell(row[index])]),
               );
             });
           }
