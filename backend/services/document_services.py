@@ -95,7 +95,7 @@ class DocumentService:
         self.excel_reader = ExcelCurrencyReader()
         self.currency_detector = CurrencyDetector(
             base_currency='USD',
-            defauly_input_currency=user_currency
+            default_input_currency=user_currency
         )
         
     def detect_file_currency(self, file_path: str, df: pd.DataFrame, amount_col: str) -> Optional[str]:
@@ -130,6 +130,12 @@ class DocumentService:
                     try:
                         df = pd.read_csv(file_path, encoding=encoding)
                         print(f"✅ CSV read with {encoding} encoding")
+                        
+                        df.columns = [c.strip('""').strip("'") for c in df.columns]
+                        for col in df.select_dtypes(include=['object', 'str']).columns:
+                            df[col] = df[col].apply(
+                                lambda x: x.strip('"').strip("'") if isinstance(x, str) else x
+                            )
                         return df
                     except UnicodeDecodeError:
                         continue
@@ -148,6 +154,10 @@ class DocumentService:
                                 df = pd.read_excel(excel_file, sheet_name=sheet)
                                 if not df.empty and len(df.columns) > 1:
                                     print(f"Found data in sheet: '{sheet}' with {len(df)} rows")
+                                    # fixing dates parse format reading
+                                    for col in df.columns:
+                                        if pd.api.types.is_datetime64_any_dtype(df[col]):
+                                            df[col] = df[col].strftime('%Y-%m-%d')
                                     return df
                             except Exception as e:
                                 print(f"Could not read sheet '{sheet}': {e}")
@@ -710,8 +720,8 @@ class ProcessingCancelledError(Exception):
     pass
         
 class EnhancedDocumentService(DocumentService):
-    def __init__(self, db: Session = None):
-        super().__init__(db)
+    def __init__(self, db: Session = None, user_currency: str = None):
+        super().__init__(db, user_currency=user_currency)
         self.batch_processor = None
         self.cache = RedisCache()
         self.current_upload_id = None
@@ -742,17 +752,7 @@ class EnhancedDocumentService(DocumentService):
         return cancellation_check
 
     def _read_dataframe_chunked(self, file_path: str, chunk_size: int = 10000) -> pd.DataFrame:
-        """Read a file into single frame.
-            The chunk_size parameter is kept for API compatibility but is not used
-            for in-memory loading — chunked reading only helps when each chunk can
-            be processed independently (e.g. streamed to a pipeline). Here we need
-            the full DataFrame for column detection and transaction extraction, so
-            loading all rows at once is both correct and simpler.
- 
-            For CSV files pd.read_csv() with low_memory=False is used directly.
-            The old pattern of read-in-chunks → pd.concat() produced the same
-            in-memory result with extra overhead and is removed.
-        """
+        """Read a file into single frame."""
         if file_path.endswith('csv'):
             return pd.read_csv(file_path, low_memory=False)
         else:
@@ -830,48 +830,42 @@ class EnhancedDocumentService(DocumentService):
                 logger.info("Processing cancelled after batch processing")
                 raise ProcessingCancelledError("Processing cancelled after batch processing")
             
-            # stage 7 : creating chunks
-            self.set_progress(7, "Creating document chunks for search...")
-            try:
-                chunks_data = self.batch_processor.chunk_documents_parallel(
-                    df, document.id, cancellation_check=cancellation_check
-                )
-                
-                if not chunks_data:
-                    logger.warning("No chunks created from document")
+            # stage 7 - 9 : Chunking + embeddings (will be skipped if the document only hold < 50 rows)
+            EMBEDDING_ROW_THRESHOLD = 50
+            chunks_data = []
+            
+            if len(df) >= EMBEDDING_ROW_THRESHOLD:
+                self.set_progress(7, "Creating document chunks for search...")
+                try:
+                    chunks_data = self.batch_processor.chunk_documents_parallel(
+                        df, document.id, cancellation_check=cancellation_check
+                    )
+                    if not chunks_data:
+                        logger.warning("No chunks created from document")
+                        chunks_data = []
+                    logger.info(f"Created {len(chunks_data)} chunks from document")
+                except Exception as e:
+                    logger.error(f"Error during chunk creation: {e}")
                     chunks_data = []
                     
-                #if cancellation_check is not None and cancellation_check():
-                    #logger.info(f"Processing cancelled at stage during embeddings")
-                    #raise ProcessingCancelledError(f"Processing cancelled during embeddings")
-                
-                logger.info(f"Created {len(chunks_data)} chunks from document")
-            except Exception as e:
-                logger.error(f"Error during chunk creation: {e}")
-                chunks_data = []
-    
-            # stage 8-9 : Embeddings
-            if chunks_data:
-                # stage 8 : Generating embeddings
-                self.set_progress(8, f"Generating embeddings for {len(chunks_data)} chunks...")
-                
-                texts = [chunk['chunk_text'] for chunk in chunks_data]
-                embeddings = self.batch_processor.generate_embeddings_parallel(
-                    texts, batch_size=50, max_workers=2, cancellation_check=cancellation_check
-                )
-                
-                if cancellation_check is not None and cancellation_check():
-                    logger.info(f"Processing cancelled at stage during embeddings")
-                    raise ProcessingCancelledError(f"Processing cancelled during embeddings")
-                
-                # stage 9 : Storing embeddings
-                self.set_progress(9, "Storing embeddings in database...")
-                success = self.batch_processor.store_embeddings_parallel(
-                    self.db, chunks_data, embeddings, cancellation_check=cancellation_check
-                )
-                
-                if not success:
-                    logger.warning("Some embeddings to store")
+                if chunks_data:
+                    self.set_progress(8, f"Generating embeddings for {len(chunks_data)} chunks...")
+                    texts = [chunk['chunk_text'] for chunk in chunks_data]
+                    embeddings = self.batch_processor.generate_embeddings_parallel(
+                        texts, batch_size=50, max_workers=2, cancellation_check=cancellation_check
+                    )
+                    
+                    if cancellation_check is not None and cancellation_check():
+                        raise ProcessingCancelledError("Processing cancelled during embeddings")
+                    
+                    self.set_progress(9, "Storing embeddings in database...")
+                    success = self.batch_processor.store_embeddings_parallel(
+                        self.db, chunks_data, embeddings, cancellation_check=cancellation_check
+                    )
+                    if not success:
+                        logger.warning("Some embeddings failed to store")
+            else:
+                logger.info(f"Skipping embeddings for small document ({len(df)} rows < {EMBEDDING_ROW_THRESHOLD}).")
                     
             # stage 10 : Finalizing
             self.set_progress(10, "Finalizing document processing...")

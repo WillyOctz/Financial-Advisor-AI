@@ -89,16 +89,19 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
           const text = await file.text();
           const lines = text.split("\n");
           const firstline = lines[0];
-          headers = firstline.split(",").map((header) => header.trim());
 
-          // get preview data
+          // strip surrounding quotes in each cell
+          headers = firstline
+            .split(",")
+            .map((h) => h.trim().replace(/^["'"]|["'"]$/g, ""));
+
+          // get preview data and strip quotes
           preview = lines.slice(1, 4).map((line) => {
-            const values = line.split(",");
+            const values = line
+              .split(",")
+              .map((v) => v.trim().replace(/^["'"]|["'"]$/g, ""));
             return Object.fromEntries(
-              headers.map((header, index) => [
-                header,
-                values[index]?.trim() || "",
-              ]),
+              headers.map((header, index) => [header, values[index] ?? ""]),
             );
           });
         } else if (
@@ -107,7 +110,10 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
         ) {
           // Handle Excel type file
           const arrayBuffer = await file.arrayBuffer();
-          const workbook = XLSX.read(arrayBuffer, { type: "array" });
+          const workbook = XLSX.read(arrayBuffer, { 
+            type: "array",
+            cellDates: true, 
+          });
 
           // Get the first sheet
           const firstSheetName = workbook.SheetNames[0];
@@ -127,6 +133,19 @@ export const ColumnMapping: React.FC<ColumnMappingProps> = ({
               )
               .map((cell) => String(cell).trim())
               .filter((header) => header.length > 0);
+
+            // helper function for format cell for readable preview
+            const formatCell = (value: any): string => {
+              if (value === null || value === undefined) return "";
+              // xlsx format return JS date 
+              if (value instanceof Date) {
+                const y = value.getFullYear();
+                const m = String(value.getMonth() + 1).padStart(2, "0");
+                const d = String(value.getDate()).padStart(2, "0");
+                return `${y}-${m}-${d}`
+              }
+              return String(value);
+            }
 
             // get the preview data
             preview = jsonData.slice(1, 4).map((row: any) => {
