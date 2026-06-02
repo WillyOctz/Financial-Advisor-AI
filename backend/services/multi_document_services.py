@@ -84,21 +84,19 @@ class DocumentTask:
 class MemoryAwareTaskScheduler:
     """Schedule tasks based on available memory"""
     
-    def __init__(self, memory_threshold_percent: float = 90.0):
+    def __init__(self, memory_threshold_percent: float = 96.0):
         self.memory_threshold = memory_threshold_percent
         self.task_memory_estimates: Dict[str, float] = {} # task_id for file size estimate
         
     def estimate_memory_needed(self, task: DocumentTask) -> float:
         """Estimate memory needed for a task in MB"""
-        
+        # reduced memory for better performance 
         # base memory for processing
-        base_memory = 100.0
-        
+        base_memory = 50.0
         # add based on file size (using 2 times as the estimation)
         file_memory = task.file_size_mb * 2.0
-        
         # add for batch processing
-        batch_memory = 50.0 # -> 50 mb for each batch operations
+        batch_memory = 30.0 # -> 30 mb for each batch operations for smaller files for now
         
         return base_memory + file_memory + batch_memory
     
@@ -112,19 +110,16 @@ class MemoryAwareTaskScheduler:
             logger.warning(f"Memory usage high: {memory_percent}%")
             return False
         
+        # small files always allowed
+        if task.file_size_mb < 1.0:
+            return True
+        
         # estimate memory needed for the new task
         task_memory = self.estimate_memory_needed(task)
-        
-        # estimate memory for currently running tasks
-        current_memory = sum(
-            self.estimate_memory_needed(t)
-            for t in current_tasks
-        )
-        
         # check available memory
         available_mb = psutil.virtual_memory().available / (1024 * 1024)
         
-        if available_mb < task_memory * 1.5:
+        if available_mb < task_memory * 1.2:
             logger.warning(f"Insufficient memory: {available_mb:.0f}MB available, " f"need {task_memory:.0f}MB for {task.filename}")
             return False
         
@@ -334,14 +329,7 @@ class MultiDocumentProcessor:
             thread_name_prefix=f"doc_{task.filename[:10]}"
         )
         
-        try:
-            # acquire rate limit tokens for this task
-            if self.enable_rate_limiting:
-                tokens_needed = max(10, int(task.file_size_mb * 2))
-                acquired = await self.rate_limiter.acquire_async(tokens_needed, timeout=10.0)
-                if not acquired:
-                    raise Exception("Rate limit timeout for document processing")
-                
+        try:    
             logger.info(f" Processing document: {task.filename} " f"(user: {task.user_id}, size: {task.file_size_mb:.1f}MB)")
             
             # run all sync processing in thread pool
@@ -726,7 +714,7 @@ class MultiDocumentProcessor:
         asyncio.create_task(self.schedule_task())
     
 multi_doc_processor = MultiDocumentProcessor(
-    max_concurrent_docs=3,
-    enable_rate_limiting=True,
+    max_concurrent_docs=1,
+    enable_rate_limiting=False,
     enable_memory_management=True
 )
