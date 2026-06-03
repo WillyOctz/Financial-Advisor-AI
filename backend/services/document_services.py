@@ -91,12 +91,10 @@ class ExcelCurrencyReader:
 class DocumentService:
     def __init__(self, db: Session, user_currency: str = None):
         self.db = db
-        self.user_currency = self.user_currency
+        self.user_currency = user_currency
         self.excel_reader = ExcelCurrencyReader()
-        self.currency_detector = CurrencyDetector(
-            base_currency='USD',
-            default_input_currency=user_currency
-        )
+        self.currency_detector = CurrencyDetector(base_currency='USD')
+        self.detected_document_currency = user_currency or 'USD'
         
     def detect_file_currency(self, file_path: str, df: pd.DataFrame, amount_col: str) -> Optional[str]:
         """Smart currency detection from file format"""
@@ -230,10 +228,8 @@ class DocumentService:
             logger.info(f"Final detected currency: {detected_currency}")
             
             # update currency detector with the detected currency
-            self.currency_detector = CurrencyDetector(
-                base_currency='USD',
-                default_input_currency=detected_currency
-            )
+            self.currency_detector = CurrencyDetector(base_currency='USD')
+            self.detected_document_currency = detected_currency
             
             # update financial document record with detected currency
             try:
@@ -271,10 +267,18 @@ class DocumentService:
                     try:
                         usd_amount, detected_currency, currency_symbol = self.currency_detector.process_amount_string(amount_str)
                         
-                        # get original amount before conversion to USD
-                        if detected_currency != 'USD':
-                            # parse original amount without conversion
-                            _, original_amt = self.currency_detector.detect_currency_from_string(amount_str)
+                        if not currency_symbol and hasattr(self, 'detected_document_currency'):
+                            
+                            doc_currency = self.detected_document_currency
+                            if doc_currency != 'USD':
+                                raw_amount = float(str(amount_str).replace('.', '').replace(',','.').strip())
+                                original_amount = raw_amount
+                                usd_amount = self.currency_detector.convert_to_base_currency(raw_amount, doc_currency)
+                                detected_currency = doc_currency
+                            else:
+                                original_amount = usd_amount
+                        elif detected_currency != 'USD':
+                            _, original_amt, _sym = self.currency_detector.detect_currency_from_string(amount_str)
                             original_amount = original_amt
                         else:
                             original_amount = usd_amount

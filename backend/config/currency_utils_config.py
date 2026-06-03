@@ -64,7 +64,7 @@ class CurrencyDetector:
             if detected_currency:
                 try:
                     clean_number = self.parse_numeric_value(numeric_part, detected_currency)
-                    logger.info(f"Currency detected from symbol: {amount_str} -> {clean_number} {detected_currency}")
+                    logger.debug(f"Currency detected from symbol: {amount_str} -> {clean_number} {detected_currency}")
                     return (detected_currency, clean_number, original_symbol)
                 except Exception as e:
                     logger.warning(f"Failed to parse with detected currency {detected_currency}: {e}")
@@ -81,7 +81,7 @@ class CurrencyDetector:
                 if detected_currency:
                     try:
                         clean_number = self.parse_numeric_value(numeric_part, detected_currency)
-                        logger.info(f"Currency Pattern symbol before number were detected: {amount_str} -> {clean_number} {detected_currency}")
+                        logger.debug(f"Currency Pattern symbol before number were detected: {amount_str} -> {clean_number} {detected_currency}")
                         return (detected_currency, clean_number, original_symbol)
                     except Exception as e:
                         logger.warning(f"Failed to parse with detected currency {detected_currency}: {e}")
@@ -229,7 +229,7 @@ def detect_document_currency(dataframe, amount_column: str) -> str:
     # return most common currency
     if currency_counts:
         predominant_currency = max(currency_counts, key=currency_counts.get)
-        logger.info(f"Document currency detected: {predominant_currency} (found in {currency_counts[predominant_currency]}/{sample_size} rows)")
+        logger.info(f"Document currency detected: {predominant_currency} ({currency_counts[predominant_currency]}/{sample_size} rows sampled)")
         return predominant_currency
     
     return 'USD'
