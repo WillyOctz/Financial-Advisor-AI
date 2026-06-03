@@ -110,6 +110,7 @@ async def upload_multiple_documents(
             }
             
             tasks.append(task)
+            await multi_doc_processor.submit_document(task)
             logger.info(f"✅ Queued: {file.filename} ({task_id[:8]}...)")
         
         # Cleanup temp files after 5 minutes
