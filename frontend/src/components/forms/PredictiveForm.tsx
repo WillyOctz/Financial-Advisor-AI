@@ -448,7 +448,7 @@ const PredictiveForm: React.FC<PredictiveFormProps> = ({ userId }) => {
             </CardHeader>
 
             <CardContent className="relative z-10">
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-600">Identified</span>
                   <motion.span
@@ -813,7 +813,7 @@ const PredictiveForm: React.FC<PredictiveFormProps> = ({ userId }) => {
                                     : "bg-blue-50 border-blue-200 border-l-4"
                               } hover:shadow-lg transition-shadow`}
                             >
-                              <div className="flex items-star gap-3">
+                              <div className="flex items-start gap-3">
                                 <TrendingUp
                                   className={`h-5 w-5 ${
                                     risk.severity === "HIGH"
