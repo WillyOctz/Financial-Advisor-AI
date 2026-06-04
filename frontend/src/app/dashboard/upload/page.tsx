@@ -374,6 +374,14 @@ export default function UploadPage() {
                       className="mb-6 bg-blue-50 rounded-xl p-6 border border-blue-100"
                     >
                       <h3 className="font-semibold text-blue-900 mb-3">
+                        Guide For Excel:
+                      </h3>
+                      <div className="flex flex-col">
+                        <p>Make sure to format all the cells in Excel to Text!</p>
+                        <p>How: Ctrl + A then left click to choose format and choose Text</p>
+                        <p>Fill data manually, otherwise it won't get recognize by the system!</p>
+                      </div>
+                      <h3 className="font-semibold text-blue-900 mb-3">
                         Required Columns:
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
