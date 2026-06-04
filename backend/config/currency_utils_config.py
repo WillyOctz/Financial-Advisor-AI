@@ -122,22 +122,21 @@ class CurrencyDetector:
         comma_count = numeric_str.count(',')
         
         # determine decimal seperator based on currency
-        if currency in ['IDR']:
+        if currency == 'IDR':
             if comma_count > 0:
                 numeric_str = numeric_str.replace('.', '') # remove thousand seperator
                 numeric_str = numeric_str.replace(',', '.') # comma of decimal point 
             else:
-                numeric_str = numeric_str.replace(',', '.')
+                numeric_str = numeric_str.replace('.', '')
         
         # USD and others currency format 
         else:
-            if period_count > 1 and comma_count <= 1:
-                logger.warning(f"USD currency but IDR format detected in '{numeric_str}', treating as IDR")
-                if comma_count > 0:
-                    numeric_str = numeric_str.replace('.', '')
-                    numeric_str = numeric_str.replace(',', '.')
-                else:
-                    numeric_str = numeric_str.replace('.', '')
+            if period_count > 1:
+                numeric_str = numeric_str.replace('.', '')
+            elif comma_count > 1:
+                numeric_str = numeric_str.replace(',', '')
+            elif comma_count == 1 and period_count == 0:
+                numeric_str = numeric_str.replace(',', '')
             else:
                 numeric_str = numeric_str.replace(',', '')
                 
@@ -154,10 +153,6 @@ class CurrencyDetector:
         
     def infer_currency_from_format(self, numeric_str: str) -> str:
         """Infer currency from number format when no symbol is present"""
-        # checking IDR currency with periods as thousand seperators and comma
-        if re.match(r'^[\d\.]+,\d{1,2}$', numeric_str) or (numeric_str.count('.') > 1 and ',' in numeric_str):
-            return 'IDR'
-        
         period_count = numeric_str.count('.')
         comma_count = numeric_str.count(',')
         
@@ -185,7 +180,7 @@ class CurrencyDetector:
             return 'USD'
         
         logger.debug("No clear pattern, defaulting to USD")
-        return 'USD'
+        return self.base_currency
      
     def convert_to_base_currency(self, amount: float, from_currency: str) -> float:
         """Convert amount from detected currency to base currency (USD)"""
@@ -195,7 +190,6 @@ class CurrencyDetector:
         rate = self.exchange_rates.get(from_currency)
         if not rate:
             logger.warning(f"Exchange rate not found for {from_currency}, defaulting to 1:1")
-            
             return float(amount)
         
         # convert to base currency
