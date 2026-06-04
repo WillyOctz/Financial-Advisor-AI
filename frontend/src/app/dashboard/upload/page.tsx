@@ -376,8 +376,8 @@ export default function UploadPage() {
                       <h3 className="font-semibold text-blue-900 mb-3">
                         Guide For Excel:
                       </h3>
-                      <div className="flex flex-col mb-3">
-                        <p>Make sure to format ONLY the <p className="text-red-400">Amount</p> cells to Text format!</p>
+                      <div className="flex flex-col mb-3 gap-3">
+                        <p>Make sure to format ONLY the Amount cells to Text format!</p>
                         <p>How: Block all the Amount cell then left click to choose Format Cells and choose Text.</p>
                         <p>Fill your Amount with the same sample of the downloaded prefered format Amount.</p>
                       </div>
