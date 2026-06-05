@@ -16,6 +16,7 @@ import openpyxl
 import traceback
 from collections import Counter
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -23,19 +24,33 @@ class ExcelCurrencyReader:
     """Reading excel file format for currency detector"""
     
     EXCEL_CURRENCY_MAP = {
-        '$': 'USD',
         'Rp': 'IDR',
+        'rp': 'IDR',
+        'IDR': 'IDR',
+        '$': 'USD',
+        'USD': 'USD',
     }
     
     def detect_currency_from_format(self, number_format: str) -> Optional[str]:
         """Extract currency from excel number format string"""
-        if not number_format:
+        if not number_format or number_format == 'General':
             return None
         
-        for symbol, currency in self.EXCEL_CURRENCY_MAP.items():
-            if symbol in number_format:
-                logger.debug(f"Found currency '{currency}' from format: {number_format}")
-                return currency 
+        # check symbol inside double-qoutes
+        quoted = re.findall(r'"([^"]+)"', number_format)
+        for sym in quoted:
+            sym_clean = sym.strip()
+            for key, code in self.EXCEL_CURRENCY_MAP.items():
+                if key.lower() == sym_clean.lower():
+                    logger.debug(f"Currency '{code}' from quoted format symbol '{sym_clean}")
+                    return code
+                
+        # fallback methods if above method fail
+        for key, code in self.EXCEL_CURRENCY_MAP.items():
+            if key in number_format:
+                logger.debug(f"Currency '{code}' from raw format symbol '{key}'")
+                return code
+        
         return None
     
     def detect_currency_from_excel(self, file_path: str, amount_column: str = 'Amount') -> Optional[str]:
@@ -49,7 +64,7 @@ class ExcelCurrencyReader:
             amount_col_idx = None
             
             for idx, cell_value in enumerate(header_row, start=1):
-                if str(cell_value).strip().lower() == amount_column.idx():
+                if str(cell_value).strip().lower() == amount_column.strip().lower():
                     amount_col_idx = idx
                     break
                 
@@ -62,23 +77,20 @@ class ExcelCurrencyReader:
             col_letter = openpyxl.utils.get_column_letter(amount_col_idx)
             
             # sample the first 10 data rows to detect currency format
-            detected_currencies = []
+            detected = []
             for row_idx in range(2, min(12, worksheet.max_row + 1)):
                 cell = worksheet[f'{col_letter}{row_idx}']
                 
                 if cell.value is not None:
-                    number_format = cell.number_format
-                    logger.debug(f"Cell {col_letter}{row_idx}: value={cell.value}, format='{number_format}'")
-                    
-                    currency = self.detect_currency_from_format(number_format)
+                    currency = self.detect_currency_from_format(cell.number_format)
                     if currency:
-                        detected_currencies.append(currency)
+                        detected.append(currency)
             
             workbook.close()
             
             # determine predominant currency
-            if detected_currencies:
-                most_common = Counter(detected_currencies).most_common(1)[0][0]
+            if detected:
+                most_common = Counter(detected).most_common(1)[0][0]
                 logger.debug(f"Currency detected from Excel cell formatting: {most_common}")
                 return most_common
             else:
@@ -87,6 +99,45 @@ class ExcelCurrencyReader:
         except Exception as e:
             logger.error(f"❌ Error reading Excel formatting: {e}")
             return None
+        
+    def read_with_currency_formats(self, file_path: str, amount_column: str) -> dict:
+        """Read the amount column and return per-index cells into currency map through loop"""
+        row_currency_map = {}
+        
+        try:
+            workbook = openpyxl.load_workbook(file_path, data_only=False)
+            worksheet = workbook.active
+            
+            header_row = list(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))[0]
+            
+            amount_col_idx = None
+            for idx, cell_value in enumerate(header_row, start=1):
+                if str(cell_value).strip().lower() == amount_column.strip().lower():
+                    amount_col_idx = idx
+                    break
+                
+            if amount_col_idx is None:
+                workbook.close()
+                return row_currency_map
+            
+            col_letter = openpyxl.utils.get_column_letter(amount_col_idx)
+            
+            # map pandas row index(based 0 in data rows) into currency
+            for row_idx in range(2, worksheet.max_row + 1):
+                cell = worksheet[f'{col_letter}{row_idx}']
+                if cell.value is not None and isinstance(cell.value, (int, float)):
+                    currency = self.detect_currency_from_format(cell.number_format)
+                    if currency:
+                        pandas_idx = row_idx - 2
+                        row_currency_map[pandas_idx] = currency
+                        
+            workbook.close()
+            logger.info(f"Built per-row currency map: {len(row_currency_map)} numeric cells with known currency format")
+            
+        except Exception as e:
+            logger.error(f"Error building row currency map: {e}")
+        
+        return row_currency_map
 
 class DocumentService:
     def __init__(self, db: Session, user_currency: str = None):
@@ -225,6 +276,17 @@ class DocumentService:
 
             # detect document currency used
             detected_currency = self.detect_file_currency(file_path, df, amount_col)
+            
+            # build per row currency map from number_format, it handles where the number is plain integer but the number_format has currency symbol
+            row_currency_map = {}
+            if file_path.endswith(('.xlsx', '.xls')):
+                row_currency_map = self.excel_reader.read_with_currency_formats(file_path, amount_col)
+                if row_currency_map:
+                    # override the document detected currency with commoon per-cell currency
+                    most_common = Counter(row_currency_map.values()).most_common(1)[0][0]
+                    if not detected_currency:
+                        detected_currency = most_common
+                    logger.info(f"Per-row currency map built: {len(row_currency_map)} cells, predominant={most_common}")
             logger.info(f"Final detected currency: {detected_currency}")
             
             # update currency detector with the detected currency
@@ -257,11 +319,23 @@ class DocumentService:
                     amount_raw = row[amount_col]
                     logger.info(f"🔍 Parsing amount from raw value: {amount_raw}")
 
-                    # Convert to string if not already
-                    if not isinstance(amount_raw, str):
+                    # Check if the currency from excel number_format, if it is, prepend the symbol so it can be detected
+                    if not isinstance(amount_raw, str) and isinstance(amount_raw, (int, float)):
+                        
+                        cell_currency = row_currency_map.get(index)
+                        if cell_currency == 'IDR':
+                            amount_str = f"Rp {amount_raw}"
+                        elif cell_currency == 'USD':
+                            amount_str = f"$ {amount_raw}"
+                        else:
+                            amount_str = str(amount_raw)
+                            
+                    elif not isinstance(amount_raw, str):
                         amount_str = str(amount_raw)
                     else:
                         amount_str = amount_raw
+                        
+                    logger.debug(f"Row {index}: amount_str for parsing = {amount_str!r}")
 
                     # currency detector on this part
                     try:
