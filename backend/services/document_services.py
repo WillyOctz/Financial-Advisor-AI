@@ -280,9 +280,11 @@ class DocumentService:
             # build per row currency map from number_format, it handles where the number is plain integer but the number_format has currency symbol
             row_currency_map = {}
             if file_path.endswith(('.xlsx', '.xls')):
-                row_currency_map = self.excel_reader.read_with_currency_formats(file_path, amount_col)
+               
+                original_amount_col = column_mapping.get('amount', 'amount')
+                row_currency_map = self.excel_reader.read_with_currency_formats(file_path, original_amount_col)
                 if row_currency_map:
-                    # override the document detected currency with commoon per-cell currency
+                    # override the document detected currency with common per-cell currency
                     most_common = Counter(row_currency_map.values()).most_common(1)[0][0]
                     
                     detected_currency = most_common
@@ -1236,9 +1238,3 @@ class EnhancedDocumentService(DocumentService):
         except Exception as e:
             logger.error(f"Currency-aware parsing failed for '{amount_raw}': {e}")
             return (float('nan'), 'USD', float('nan'), '')
-        
-    
-        
-        
-    
-
