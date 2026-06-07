@@ -284,8 +284,8 @@ class DocumentService:
                 if row_currency_map:
                     # override the document detected currency with commoon per-cell currency
                     most_common = Counter(row_currency_map.values()).most_common(1)[0][0]
-                    if not detected_currency:
-                        detected_currency = most_common
+                    
+                    detected_currency = most_common
                     logger.info(f"Per-row currency map built: {len(row_currency_map)} cells, predominant={most_common}")
             logger.info(f"Final detected currency: {detected_currency}")
             
@@ -339,19 +339,19 @@ class DocumentService:
 
                     # currency detector on this part
                     try:
-                        usd_amount, detected_currency, currency_symbol = self.currency_detector.process_amount_string(amount_str)
+                        usd_amount, row_currency, currency_symbol = self.currency_detector.process_amount_string(amount_str)
                         
                         if not currency_symbol and hasattr(self, 'detected_document_currency'):
                             
                             doc_currency = self.detected_document_currency
                             if doc_currency != 'USD':
-                                raw_amount = float(str(amount_str).replace('.', '').replace(',','.').strip())
+                                raw_amount = float(amount_raw) if isinstance(amount_raw, (int, float)) else float(str(amount_raw).replace(',', ''))
                                 original_amount = raw_amount
                                 usd_amount = self.currency_detector.convert_to_base_currency(raw_amount, doc_currency)
-                                detected_currency = doc_currency
+                                row_currency = doc_currency
                             else:
                                 original_amount = usd_amount
-                        elif detected_currency != 'USD':
+                        elif row_currency != 'USD':
                             _, original_amt, _sym = self.currency_detector.detect_currency_from_string(amount_str)
                             original_amount = original_amt
                         else:
