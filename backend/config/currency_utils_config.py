@@ -118,27 +118,27 @@ class CurrencyDetector:
         numeric_str = numeric_str.strip()
         
         # count periods seperator to determine format
-        period_count = numeric_str.count('.')
         comma_count = numeric_str.count(',')
         
         # determine decimal seperator based on currency
         if currency == 'IDR':
-            if comma_count > 0:
-                numeric_str = numeric_str.replace('.', '') # remove thousand seperator
-                numeric_str = numeric_str.replace(',', '.') # comma of decimal point 
+            if comma_count > 1:
+                # Multiple commas = all thousand separators 
+                numeric_str = numeric_str.replace(',', '')
+                
+            elif comma_count == 1:
+                after_comma = numeric_str.split(',')[1]
+                if len(after_comma) <= 2:
+                    # EU decimal: 8.250.000,00 or 850.000,50
+                    numeric_str = numeric_str.replace('.', '').replace(',', '.')
+                else:
+                    numeric_str = numeric_str.replace(',', '')
             else:
+                # No commas — periods are thousand separators ex. 8.250.000
                 numeric_str = numeric_str.replace('.', '')
-        
-        # USD and others currency format 
         else:
-            if period_count > 1:
-                numeric_str = numeric_str.replace('.', '')
-            elif comma_count > 1:
-                numeric_str = numeric_str.replace(',', '')
-            elif comma_count == 1 and period_count == 0:
-                numeric_str = numeric_str.replace(',', '')
-            else:
-                numeric_str = numeric_str.replace(',', '')
+            # USD or other: commas are always thousand separators
+            numeric_str = numeric_str.replace(',', '')
                 
         is_negative = numeric_str.startswith('-') or numeric_str.startswith('(')
         numeric_str = numeric_str.replace('(', '').replace(')', '').replace('-', '')

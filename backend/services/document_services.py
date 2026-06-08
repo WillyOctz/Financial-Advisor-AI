@@ -875,7 +875,7 @@ class EnhancedDocumentService(DocumentService):
             
             # stage 4 : extracting transactions
             self.set_progress(4, "Extracting transactions from data...")
-            transactions_data, extracted_data = self._prepare_transactions_batch(df, user_id, document.id, column_mapping, self.db, cancellation_check)
+            transactions_data, extracted_data = self._prepare_transactions_batch(df, user_id, document.id, column_mapping, self.db, cancellation_check, file_path=file_path)
             
              # check cancellation
             if cancellation_check and cancellation_check():
@@ -1091,7 +1091,7 @@ class EnhancedDocumentService(DocumentService):
         
         return document    
                     
-    def _prepare_transactions_batch(self, df: pd.DataFrame, user_id: int, document_id: int, column_mapping: dict, db: Session, cancellation_check=None) -> Tuple[List[Dict], List[Dict]]:
+    def _prepare_transactions_batch(self, df: pd.DataFrame, user_id: int, document_id: int, column_mapping: dict, db: Session, cancellation_check=None, file_path: str = None) -> Tuple[List[Dict], List[Dict]]:
         """Prepare transaction data dictionaries for batch insertion along with extracted chunks to save"""
 
         transactions_data = []
@@ -1105,6 +1105,16 @@ class EnhancedDocumentService(DocumentService):
         desc_col = self._find_best_column_match(df.columns, column_mapping.get('description', 'description'))
         amount_col = self._find_best_column_match(df.columns, column_mapping.get('amount', 'amount'))
         type_col = self._find_best_column_match(df.columns, column_mapping.get('type', 'type'))
+        
+        # Build per-row currency map from Excel cell number_format.
+        row_currency_map = {}
+        if file_path and file_path.endswith(('.xlsx', '.xls')):
+            original_amount_col = column_mapping.get('amount', 'Amount')
+            row_currency_map = self.excel_reader.read_with_currency_formats(file_path, original_amount_col)
+            if row_currency_map:
+                most_common = Counter(row_currency_map.values()).most_common(1)[0][0]
+                self.detected_document_currency = most_common
+                logger.info(f"_prepare_transactions_batch: row_currency_map built, {len(row_currency_map)} cells → {most_common}")
         
         # cancellation point at start
         if cancellation_check is not None and cancellation_check():
@@ -1126,7 +1136,8 @@ class EnhancedDocumentService(DocumentService):
                 # Parse amount with currency detection
                 amount_raw = row[amount_col]
                 
-                usd_amount, detected_currency, original_amount, currency_symbol = self.parse_amount_with_currency(amount_raw)
+                cell_currency = row_currency_map.get(index)
+                usd_amount, detected_currency, original_amount, currency_symbol = self.parse_amount_with_currency(amount_raw, cell_currency=cell_currency)
                 
                 if pd.isna(usd_amount):
                     logger.debug(f"Row {index}: Skipping - amount parsing failed")
@@ -1217,12 +1228,19 @@ class EnhancedDocumentService(DocumentService):
                   
         return transactions_data, extracted_data
     
-    def parse_amount_with_currency(self, amount_raw) -> Tuple[float, str, float, str]:
+    def parse_amount_with_currency(self, amount_raw, cell_currency: str = None) -> Tuple[float, str, float, str]:
         """Parse amount with currencies detector"""
         if pd.isna(amount_raw):
             return (float('nan'), 'USD', float('nan'), '')
     
         try:
+            if cell_currency and isinstance(amount_raw, (int, float)):
+                original_amount = float(amount_raw)
+                usd_amount = self.currency_detector.convert_to_base_currency(original_amount, cell_currency)
+                currency_symbol = 'Rp' if cell_currency == 'IDR' else '$' if cell_currency == 'USD' else ''
+                logger.debug(f"Parsed via cell format: {amount_raw} {cell_currency} -> ${usd_amount:.4f} USD")
+                return (usd_amount, cell_currency, original_amount, currency_symbol)
+            
             # convert to string
             if not isinstance(amount_raw, str):
                 amount_str = str(amount_raw)
