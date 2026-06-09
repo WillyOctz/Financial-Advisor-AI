@@ -17,14 +17,15 @@ import {
 import { useUser } from "@/lib/hooks/useUser";
 import { apiClient } from "@/lib/api/client";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { format } from "path";
+import { useCurrency } from "@/lib/hooks/useCurrency";
+import { formatCurrency } from "@/lib/utils/currency";
 
 interface FinancialMetrics {
   total_income: number;
   total_expenses: number;
   net_savings: number;
   savings_rate: number;
-  top_expense_categories: string;
+  top_expense_category: string;
   top_expense_amount: number;
   transaction_count: number;
   timeframe: string;
@@ -37,6 +38,7 @@ interface DailySummary extends FinancialMetrics {
 
 export default function DashboardPage() {
   const { user } = useUser();
+  const { currency } = useCurrency();
   const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,12 +133,6 @@ export default function DashboardPage() {
     day: "numeric",
   });
 
-  const formatCurrency = (value: number) => {
-    return value.toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  };
 
   if (loading) {
     return (
@@ -290,8 +286,7 @@ export default function DashboardPage() {
                             `${metric.value.toFixed(2)}%`
                           ) : (
                             <span>
-                              <span className="text-2xl text-slate-500">$</span>
-                              {formatCurrency(metric.value)}
+                              {formatCurrency(metric.value, currency)}
                             </span>
                           )}
                         </div>
@@ -341,17 +336,17 @@ export default function DashboardPage() {
                       </div>
                     </div>
 
-                    {dailySummary.top_expense_categories !== "None" && (
+                    {dailySummary.top_expense_category !== "None" && (
                       <div className="space-y-2">
                         <p className="text-sm font-medium text-slate-500 uppercase tracking-wide">
                           Top Spending
                         </p>
                         <div>
                           <p className="text-xl font-bold text-slate-900 mb-1">
-                            {dailySummary.top_expense_categories}
+                            {dailySummary.top_expense_category}
                           </p>
                           <p className="text-2xl font-bold text-rose-600">
-                            ${formatCurrency(dailySummary.top_expense_amount)}
+                            {formatCurrency(dailySummary.top_expense_amount, currency)}
                           </p>
                         </div>
                       </div>

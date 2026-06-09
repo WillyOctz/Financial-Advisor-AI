@@ -261,8 +261,8 @@ class DisplayService:
         """Return metrics current month,previous month and all time almost same with financial summary but for calculation between percentage current month and previous month and all time from both"""
         
         now = datetime.now()
-        current_year = now.year()
-        current_month = now.month()
+        current_year = now.year
+        current_month = now.month
         
         prev_month = current_month - 1 if current_month > 1 else 12
         prev_year = current_year if current_month > 1 else current_year - 1
