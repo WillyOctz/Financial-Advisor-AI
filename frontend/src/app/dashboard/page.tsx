@@ -19,6 +19,7 @@ import { apiClient } from "@/lib/api/client";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useCurrency } from "@/lib/hooks/useCurrency";
 import { formatCurrency } from "@/lib/utils/currency";
+import { formatTimeFrame } from "@/lib/utils/formatters"
 
 interface FinancialMetrics {
   total_income: number;
@@ -358,7 +359,7 @@ export default function DashboardPage() {
                       </p>
                       <div>
                         <p className="text-xl font-bold text-slate-900">
-                          {isToday ? "Today" : dailySummary.timeframe}
+                          {isToday ? "Today" : formatTimeFrame(dailySummary.timeframe)}
                         </p>
                         <p className="text-sm text-slate-600">
                           {isToday ? dailySummary.date ?? "" : "Latest available data"}
