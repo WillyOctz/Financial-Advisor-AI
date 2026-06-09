@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import extract
 from backend.models.database import Transaction, FinancialInsight
 from backend.models.schemas import AIAdviceResponse
 from backend.services.rag_service import RAGService
@@ -255,6 +256,102 @@ class DisplayService:
                 essential_total += amount
 
         return essential_total
+    
+    def get_analysis_summary(self, user_id: int) -> Dict[str, any]:
+        """Return metrics current month,previous month and all time almost same with financial summary but for calculation between percentage current month and previous month and all time from both"""
+        
+        now = datetime.now()
+        current_year = now.year()
+        current_month = now.month()
+        
+        prev_month = current_month - 1 if current_month > 1 else 12
+        prev_year = current_year if current_month > 1 else current_year - 1
+        
+        # helper function
+        def _totals(transactions):
+            income = sum(t.amount for t in transactions if t.type.value == "INCOME")
+            expenses = sum(t.amount for t in transactions if t.type.value == "EXPENSE")
+            net = income - expenses
+            rate = (net / income * 100) if income > 0 else 0.0
+            return {"income": income, "expenses": expenses,
+                    "net_savings": net, "savings_rate": rate,
+                    "count": len(transactions)}
+        
+        def _pct_change(current: float, previous: float) -> float:
+            """Signed percentage change"""
+            # return 0 when previous is 0 or none
+            if previous == 0:
+                return 100.0 if current > 0 else 0.0
+            return round((current - previous) / previous * 100, 1)
+        
+        # query each period
+        base = self.db.query(Transaction).filter(Transaction.user_id == user_id)
+        
+        current_txns = base.filter(
+            extract("year",  Transaction.date) == current_year,
+            extract("month", Transaction.date) == current_month,
+        ).all()
+        
+        prev_txns = base.filter(
+            extract("year",  Transaction.date) == prev_year,
+            extract("month", Transaction.date) == prev_month,
+        ).all()
+        
+        all_txns = base.all()
+        
+        cur = _totals(current_txns)
+        prev = _totals(prev_txns)
+        all_ = _totals(all_txns)
+        
+        def _direction(pct: float) -> str:
+            return "up" if pct >= 0 else "down"
+        
+        # analysis object of financial summary, can flip colour if needed
+        return {
+            "current_month": {
+                "label": now.strftime("%B %Y"),
+                "income":        cur["income"],
+                "expenses":      cur["expenses"],
+                "net_savings":   cur["net_savings"],
+                "savings_rate":  round(cur["savings_rate"], 1),
+                "transaction_count": cur["count"],
+            },
+            "previous_month": {
+                "label": datetime(prev_year, prev_month, 1).strftime("%B %Y"),
+                "income":       prev["income"],
+                "expenses":     prev["expenses"],
+                "net_savings":  prev["net_savings"],
+                "savings_rate": round(prev["savings_rate"], 1),
+                "transaction_count": prev["count"],
+            },
+            "all_time": {
+                "income":       all_["income"],
+                "expenses":     all_["expenses"],
+                "net_savings":  all_["net_savings"],
+                "savings_rate": round(all_["savings_rate"], 1),
+                "transaction_count": all_["count"],
+            },
+            # Ready-to-use change objects for each metric
+            "changes": {
+                "income": {
+                    "pct":       _pct_change(cur["income"],       prev["income"]),
+                    "direction": _direction(_pct_change(cur["income"], prev["income"])),
+                },
+                "expenses": {
+                    "pct":       _pct_change(cur["expenses"],     prev["expenses"]),
+                    "direction": _direction(_pct_change(cur["expenses"], prev["expenses"])),
+                },
+                "net_savings": {
+                    "pct":       _pct_change(cur["net_savings"],  prev["net_savings"]),
+                    "direction": _direction(_pct_change(cur["net_savings"], prev["net_savings"])),
+                },
+                "savings_rate": {
+                    "pct":       _pct_change(cur["savings_rate"], prev["savings_rate"]),
+                    "direction": _direction(_pct_change(cur["savings_rate"], prev["savings_rate"])),
+                },
+            },
+        }
+        
     
     def generate_ai_advice(self, user_id: int, custom_prompt: str = None) -> AIAdviceResponse:
         """Generate AI advice using RAG (more advanced and optimized)"""

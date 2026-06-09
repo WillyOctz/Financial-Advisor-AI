@@ -5,6 +5,8 @@ import {
   FinancialSummary,
   FutureRiskPrediction,
   RiskAssessment,
+  DashboardSummary,
+  AnalysisSummary,
 } from "@/types/financial";
 import { useState, useCallback } from "react";
 import { apiClient } from "../api/client";
@@ -12,6 +14,8 @@ import { apiClient } from "../api/client";
 interface UseAnalysisResult {
   summary: FinancialSummary | null;
   advice: AIAdviceResponse | null;
+  analysisSummary: AnalysisSummary | null;
+  dashboardSummary: DashboardSummary | null;
   isLoading: boolean;
   error: string | null;
   anomalies: AnomalyDetectionResult | null;
@@ -19,6 +23,8 @@ interface UseAnalysisResult {
   futureRisks: FutureRiskPrediction | null;
   healthCheck: FinancialHealthCheck | null;
   fetchSummary: (userId: number, timeframe?: string) => Promise<void>;
+  fetchAnalysisSummary: (userId: number) => Promise<void>;
+  fetchDashboardSummary: (userId: number) => Promise<void>;
   generateAdvice: (userId: number, customPrompt?: string) => Promise<void>;
   fetchAnomalies: (userId: number, windowDays?: number) => Promise<void>;
   fetchRiskAssessment: (userId: number) => Promise<void>;
@@ -28,20 +34,24 @@ interface UseAnalysisResult {
 
 export const useAnalysis = (): UseAnalysisResult => {
   const [summary, setSummary] = useState<FinancialSummary | null>(null);
+  const [analysisSummary, setAnalysisSummary] =
+    useState<AnalysisSummary | null>(null);
+  const [dashboardSummary, setDashboardSummary] =
+    useState<DashboardSummary | null>(null);
   const [advice, setAdvice] = useState<AIAdviceResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [anomalies, setAnomalies] = useState<AnomalyDetectionResult | null>(
-    null
+    null,
   );
   const [riskAssessment, setRiskAssessment] = useState<RiskAssessment | null>(
-    null
+    null,
   );
   const [futureRisks, setFutureRisks] = useState<FutureRiskPrediction | null>(
-    null
+    null,
   );
   const [healthCheck, setHealthCheck] = useState<FinancialHealthCheck | null>(
-    null
+    null,
   );
 
   // Warp with use callback for fetchSummary and generateAdvice to prevent infinite render
@@ -61,8 +71,34 @@ export const useAnalysis = (): UseAnalysisResult => {
         setIsLoading(false);
       }
     },
-    []
+    [],
   );
+
+  const fetchAnalysisSummary = useCallback(async (userId: number) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await apiClient.get(`/display/analysis/${userId}`);
+      setAnalysisSummary(res.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to get analysis summary");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const fetchDashboardSummary = useCallback(async (userId: number) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await apiClient.get(`/display/dashboard/${userId}`);
+      setDashboardSummary(res.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to get dashboard summary");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   const generateAdvice = useCallback(
     async (userId: number, customPrompt?: string) => {
@@ -81,7 +117,7 @@ export const useAnalysis = (): UseAnalysisResult => {
         setIsLoading(false);
       }
     },
-    []
+    [],
   );
 
   const fetchAnomalies = useCallback(
@@ -100,7 +136,7 @@ export const useAnalysis = (): UseAnalysisResult => {
         setIsLoading(false);
       }
     },
-    []
+    [],
   );
 
   const fetchRiskAssessment = useCallback(async (userId: number) => {
@@ -127,13 +163,13 @@ export const useAnalysis = (): UseAnalysisResult => {
         setFutureRisks(res.data);
       } catch (err: any) {
         setError(
-          err.response?.data?.detail || "Failed to predict future risks"
+          err.response?.data?.detail || "Failed to predict future risks",
         );
       } finally {
         setIsLoading(false);
       }
     },
-    []
+    [],
   );
 
   const fetchHealthCheck = useCallback(async (userId: number) => {
@@ -153,6 +189,8 @@ export const useAnalysis = (): UseAnalysisResult => {
   return {
     summary,
     advice,
+    analysisSummary,
+    dashboardSummary,
     isLoading,
     error,
     anomalies,
@@ -165,5 +203,7 @@ export const useAnalysis = (): UseAnalysisResult => {
     fetchRiskAssessment,
     fetchFutureRisks,
     fetchHealthCheck,
+    fetchAnalysisSummary,
+    fetchDashboardSummary
   };
 };

@@ -226,6 +226,36 @@ export interface FinancialHealthCheck {
   next_review_recommended: string;
 }
 
+export interface AnalysisPeriodMetrics{
+  label?: string;              
+  income: number;
+  expenses: number;
+  net_savings: number;
+  savings_rate: number;
+  transaction_count: number;
+}
+
+export interface AnalysisChangeMetric{
+  pct: number;
+  direction: "up" | "down";
+}
+
+export interface AnalysisSummary {
+  current_month: AnalysisPeriodMetrics;
+  previous_month: AnalysisPeriodMetrics;
+  all_time: Omit<AnalysisPeriodMetrics, "label">;
+  changes: {
+    income:       AnalysisChangeMetric;
+    expenses:     AnalysisChangeMetric;
+    net_savings:  AnalysisChangeMetric;
+    savings_rate: AnalysisChangeMetric;
+  };
+}
+
+export interface DashboardSummary extends FinancialSummary {
+  display_timeframe: "today" | "latest_month";
+}
+
 export function isFinancialAdviceResponse(response: AIAdviceResponse): boolean {
   return (
     response.financial_health_score !== null &&

@@ -28,6 +28,51 @@ def get_financial_summary(user_id: int,timeframe: str = "today" ,db: Session = D
     summary = display_service.get_financial_summary(user_id, timeframe)
     return summary
 
+@router.get("/dashboard/{user_id}")
+def get_dashboard_summary(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Dashboard home page to display current document data after uploading"""
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this user's data")
+    
+    display_service = DisplayService(db)
+    
+    # display today timeframe
+    today_summary = display_service.get_financial_summary(user_id, "today")
+    
+    if today_summary.get("transaction_count", 0) > 0:
+        today_summary["display_timeframe"] = "today"
+        return today_summary
+    
+    # if it fails, show latest month
+    month_summary = display_service.get_financial_summary(user_id, "latest_month")
+    month_summary["display_timeframe"] =  "latest_month"
+    
+    return month_summary
+
+@router.get("/analysis/{user_id}")
+def get_analysis_summary(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Analysis page metrics endpoint.
+    Returns current month, previous month, all-time totals and
+    the real month-over-month percentage change for every metric card.
+    """
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this user's data")
+
+    try:
+        display_service = DisplayService(db)
+        return display_service.get_analysis_summary(user_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching analysis summary: {str(e)}")
+
 @router.post("/advice", response_model=AIAdviceResponse)
 def get_ai_advice(
     request: AIAdviceRequest,

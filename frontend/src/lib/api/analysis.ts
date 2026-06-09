@@ -5,23 +5,35 @@ import {
   RiskAssessment,
   FutureRiskPrediction,
   FinancialHealthCheck,
+  DashboardSummary,
+  AnalysisSummary,
 } from "@/types/financial";
 import { apiClient } from "./client";
 
 export const analysisApi = {
   getFinancialSummary: async (
     userId: number,
-    timeframe: string = "latest_month"
+    timeframe: string = "latest_month",
   ): Promise<FinancialSummary> => {
     const res = await apiClient.get(
-      `/display/summary/${userId}?timeframe=${timeframe}`
+      `/display/summary/${userId}?timeframe=${timeframe}`,
     );
+    return res.data;
+  },
+
+  getDashboardSummary: async (userId: number): Promise<DashboardSummary> => {
+    const res = await apiClient.get(`/display/dashboard/${userId}`);
+    return res.data;
+  },
+
+  getAnalysisSummary: async (userId: number): Promise<AnalysisSummary> => {
+    const res = await apiClient.get(`/display/analysis/${userId}`);
     return res.data;
   },
 
   getAIAdvice: async (
     userId: number,
-    customPrompt?: string
+    customPrompt?: string,
   ): Promise<AIAdviceResponse> => {
     const res = await apiClient.post("/display/advice", {
       user_id: userId,
@@ -32,7 +44,7 @@ export const analysisApi = {
 
   getTransactionAnomalies: async (
     userId: number,
-    windowDays: number = 90
+    windowDays: number = 90,
   ): Promise<AnomalyDetectionResult> => {
     const res = await apiClient.get(`/predictive/anomalies/${userId}`, {
       params: { window_days: windowDays },
@@ -41,7 +53,7 @@ export const analysisApi = {
   },
 
   getFinancialRiskAssessment: async (
-    userId: number
+    userId: number,
   ): Promise<RiskAssessment> => {
     const res = await apiClient.get(`/predictive/risk-assessment/${userId}`);
     return res.data;
@@ -49,7 +61,7 @@ export const analysisApi = {
 
   getFutureRisks: async (
     userId: number,
-    horizonMonths: number = 6
+    horizonMonths: number = 6,
   ): Promise<FutureRiskPrediction> => {
     const res = await apiClient.get(`/predictive/future-risks/${userId}`, {
       params: { horizon_months: horizonMonths },
@@ -58,7 +70,7 @@ export const analysisApi = {
   },
 
   getFinancialHealthCheck: async (
-    userId: number
+    userId: number,
   ): Promise<FinancialHealthCheck> => {
     const res = await apiClient.get(`/predictive/financial-status/${userId}`);
     return res.data;

@@ -28,6 +28,7 @@ interface FinancialMetrics {
   top_expense_amount: number;
   transaction_count: number;
   timeframe: string;
+  display_timeframe: "today" | "latest_month";
 }
 
 interface DailySummary extends FinancialMetrics {
@@ -52,7 +53,7 @@ export default function DashboardPage() {
       try {
         setLoading(true);
         // Fetch today's summary from API
-        const res = await apiClient.get(`/display/summary/${user.id}`, {
+        const res = await apiClient.get(`/display/dashboard/${user.id}`, {
           params: {
             timeframe: "today",
           },
@@ -71,12 +72,14 @@ export default function DashboardPage() {
     fetchTodaySummary();
   }, [user?.id]);
 
+  const isToday = dailySummary?.display_timeframe == "today";
+
   const displayMetrics = dailySummary
     ? [
         {
-          title: "Today's Income",
+          title: isToday ? "Today's Income" : "Monthly Income",
           value: dailySummary.total_income,
-          change: "+0.0%",
+          change: null,
           icon: ArrowUpIcon,
           color: "emerald",
           bgGradient: "from-emerald-50 to-teal-50",
@@ -85,9 +88,9 @@ export default function DashboardPage() {
           trend: "up",
         },
         {
-          title: "Today's Expenses",
+          title: isToday ? "Today's Expenses" : "Monthly Expenses",
           value: dailySummary.total_expenses,
-          change: "+0.0%",
+          change: null,
           icon: ArrowDownIcon,
           color: "rose",
           bgGradient: "from-rose-50 to-pink-50",
@@ -98,9 +101,7 @@ export default function DashboardPage() {
         {
           title: "Net Savings",
           value: dailySummary.net_savings,
-          change: dailySummary.savings_rate
-            ? `${dailySummary.savings_rate.toFixed(2)}%`
-            : "+0.0%",
+          change: null,
           icon: DollarSign,
           color: "blue",
           bgGradient: "from-blue-50 to-indigo-50",
@@ -111,7 +112,7 @@ export default function DashboardPage() {
         {
           title: "Savings Rate",
           value: dailySummary.savings_rate,
-          change: "+5.4%",
+          change: null,
           icon: TrendingUp,
           color: "amber",
           bgGradient: "from-amber-50 to-yellow-50",
@@ -362,10 +363,10 @@ export default function DashboardPage() {
                       </p>
                       <div>
                         <p className="text-xl font-bold text-slate-900">
-                          Today
+                          {isToday ? "Today" : dailySummary.timeframe}
                         </p>
                         <p className="text-sm text-slate-600">
-                          {dailySummary.timeframe}
+                          {isToday ? dailySummary.date ?? "" : "Latest available data"}
                         </p>
                       </div>
                     </div>

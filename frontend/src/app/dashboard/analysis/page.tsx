@@ -80,7 +80,7 @@ const shimmerVariants = {
 } satisfies Variants;
 
 export default function AnalysisPage() {
-  const { summary, isLoading, error, fetchSummary } = useAnalysis();
+  const { summary, analysisSummary, isLoading, error, fetchSummary, fetchAnalysisSummary } = useAnalysis();
   const [timeframe, setTimeFrame] = useState<"latest_month" | "all_time">(
     "latest_month",
   );
@@ -98,6 +98,12 @@ export default function AnalysisPage() {
       fetchSummary(userId, timeframe);
     }
   }, [userId, timeframe]);
+
+  useEffect(() => {
+    if (userId) {
+      fetchAnalysisSummary(userId);
+    }
+  }, [userId])
 
   const handleTimeframeChange = (newTimeframe: "latest_month" | "all_time") => {
     setTimeFrame(newTimeframe);
@@ -133,6 +139,20 @@ export default function AnalysisPage() {
     return "Needs Improvement";
   };
 
+  // helper function analysisChangeMetric into text badge and trend
+  const changeLabel = (key: "income" | "expenses" | "net_savings" | "savings_rate") => {
+    const c = analysisSummary?.changes[key];
+    if (!c) return { text: "—", trend: "up" as const };
+    const sign = c.direction === "up" ? "+" : "-";
+    return { text: `${sign}${Math.abs(c.pct)}%`, trend: c.direction };
+  }
+
+  const expenseChangeTrend = (key: "expenses") => {
+    const c = analysisSummary?.changes[key];
+    if (!c) return "up" as const;
+    return c.direction === "up" ? ("down" as const) : ("up" as const);
+  };
+
   const metrics = summary
     ? [
         {
@@ -142,8 +162,8 @@ export default function AnalysisPage() {
           color: "emerald",
           gradient: "from-emerald-500 to-teal-500",
           bgGradient: "from-emerald-50 to-teal-50",
-          change: "+12,5%",
-          trend: "up",
+          change: changeLabel("income").text,
+          trend: changeLabel("income").trend,
         },
         {
           title: "Total Expenses",
@@ -152,8 +172,8 @@ export default function AnalysisPage() {
           color: "rose",
           gradient: "from-rose-500 to-pink-500",
           bgGradient: "from-rose-50 to-pink-50",
-          change: "-8,3%",
-          trend: "down",
+          change: changeLabel("expenses").text,
+          trend: expenseChangeTrend("expenses"),
         },
         {
           title: "Net Savings",
@@ -162,8 +182,8 @@ export default function AnalysisPage() {
           color: "blue",
           gradient: "from-blue-500 to-cyan-500",
           bgGradient: "from-blue-50 to-cyan-50",
-          change: "+24,7%",
-          trend: "up",
+          change: changeLabel("net_savings").text,
+          trend: changeLabel("net_savings").trend,
         },
         {
           title: "Savings Rate",
@@ -172,8 +192,8 @@ export default function AnalysisPage() {
           color: "purple",
           gradient: "from-purple-500 to-pink-500",
           bgGradient: "from-purple-50 to-pink-50",
-          change: "+5,2%",
-          trend: "up",
+          change: changeLabel("savings_rate").text,
+          trend: changeLabel("savings_rate").trend,
         },
       ]
     : [];
