@@ -19,7 +19,6 @@ import { apiClient } from "@/lib/api/client";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useCurrency } from "@/lib/hooks/useCurrency";
 import { formatCurrency } from "@/lib/utils/currency";
-import { formatTimeFrame } from "@/lib/utils/formatters"
 
 interface FinancialMetrics {
   total_income: number;
@@ -140,7 +139,6 @@ export default function DashboardPage() {
     .map((word) => word.charAt(0).toUpperCase + word.slice(1))
     .join(" ");
   }
-
 
   if (loading) {
     return (
