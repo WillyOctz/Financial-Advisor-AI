@@ -134,6 +134,13 @@ export default function DashboardPage() {
     day: "numeric",
   });
 
+  function formatTimeFrame(timeframe: string): string {
+  return timeframe
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase + word.slice(1))
+    .join(" ");
+  }
+
 
   if (loading) {
     return (

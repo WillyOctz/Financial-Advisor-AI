@@ -75,9 +75,3 @@ export const capitalizeWords = (text: string): string => {
   return text.replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
-export function formatTimeFrame(timeframe: string): string {
-  return timeframe
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase + word.slice(1))
-    .join(" ");
-}
