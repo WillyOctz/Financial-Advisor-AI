@@ -14,8 +14,6 @@ import {
   TrendingDown,
   DollarSign,
   Target,
-  Heart,
-  Calendar,
   Sparkles,
   BarChart3,
   Activity,
@@ -25,9 +23,11 @@ import {
 } from "lucide-react";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useUser } from "@/lib/hooks/useUser";
-import PredictiveForm from "@/components/forms/PredictiveForm";
+import { PredictiveForm } from "@/components/forms/PredictiveForm";
 import { useCurrency } from "@/lib/hooks/useCurrency";
 import { formatCurrency } from "@/lib/utils/currency";
+import { HealthScoreCard } from "@/components/forms/HealthScoreCardForm";
+import { time } from "console";
 
 // animation variants
 const containerVariants = {
@@ -109,36 +109,6 @@ export default function AnalysisPage() {
     setTimeFrame(newTimeframe);
   };
 
-  const getHealthScoreColor = (score?: number) => {
-    if (!score)
-      return {
-        text: "text-gray-600",
-        bg: "bg-gray-100",
-        ring: "ring-gray-200",
-      };
-    if (score >= 70)
-      return {
-        text: "text-emerald-600",
-        bg: "bg-emerald-100",
-        ring: "ring-emerald-200",
-      };
-    if (score >= 50)
-      return {
-        text: "text-amber-600",
-        bg: "bg-amber-100",
-        ring: "ring-amber-200",
-      };
-    return { text: "text-rose-600", bg: "bg-rose-100", ring: "ring-rose-200" };
-  };
-
-  const getHealthScoreLabel = (score?: number) => {
-    if (!score) return "Not Available";
-    if (score >= 70) return "Excellent";
-    if (score >= 50) return "Good";
-    if (score >= 30) return "Fair";
-    return "Needs Improvement";
-  };
-
   // helper function analysisChangeMetric into text badge and trend
   const changeLabel = (key: "income" | "expenses" | "net_savings" | "savings_rate") => {
     const c = analysisSummary?.changes[key];
@@ -197,9 +167,6 @@ export default function AnalysisPage() {
         },
       ]
     : [];
-
-  const healthScore = summary?.financial_health_score;
-  const healthColors = getHealthScoreColor(healthScore);
 
   if (isLoading) {
     return (
@@ -385,97 +352,7 @@ export default function AnalysisPage() {
                 className="space-y-8"
               >
                 {/* Financial Health Score - Featured Card */}
-                <motion.div variants={itemVariants}>
-                  <Card className="border-0 shadow-2xl overflow-hidden bg-linear-to-br from-white to-slate-50">
-                    <CardContent className="p-8">
-                      <div className="flex flex-col md:flex-row items-center gap-8">
-                        {/* Score Circle */}
-                        <div className="relative">
-                          <svg className="w-40 h-40 transform -rotate-90">
-                            {/* Background circle */}
-                            <circle
-                              cx="80"
-                              cy="80"
-                              r="70"
-                              stroke="currentColor"
-                              strokeWidth="12"
-                              fill="none"
-                              className="text-slate-200"
-                            />
-                            {/* Progress Circle */}
-                            <motion.circle
-                              cx="80"
-                              cy="80"
-                              r="70"
-                              stroke="currentColor"
-                              strokeWidth="12"
-                              fill="none"
-                              strokeLinecap="round"
-                              className={healthColors.text}
-                              initial={{ strokeDasharray: "0 440" }}
-                              animate={{
-                                strokeDasharray: `${(healthScore || 0) * 4.4} 440`,
-                              }}
-                              transition={{ duration: 2, ease: "easeOut" }}
-                            />
-                          </svg>
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="text-center">
-                              <motion.div
-                                className="text-4xl font-bold text-slate-900"
-                                initial={{ opacity: 0, scale: 0 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                transition={{ delay: 0.5, type: "spring" }}
-                              >
-                                {healthScore || 0}
-                              </motion.div>
-                              <div className="text-sm text-slate-500">
-                                / 100
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Score Details */}
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Heart className={`w-5 h-5 ${healthColors.text}`} />
-                            <h3 className="text-2xl font-bold text-slate-900">
-                              Financial Health Score
-                            </h3>
-                          </div>
-                          <motion.div
-                            className={`inline-block px-4 py-2 rounded-full ${healthColors.bg} ${healthColors.text} font-semibold mb-4`}
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{ delay: 0.7, type: "spring" }}
-                          >
-                            {getHealthScoreLabel(healthScore)}
-                          </motion.div>
-                          <p className="text-slate-600 text-lg mb-4">
-                            Your financial health is{" "}
-                            {healthScore && healthScore >= 70
-                              ? "Excellent!"
-                              : healthScore && healthScore >= 50
-                                ? "Good!"
-                                : healthScore && healthScore < 50
-                                  ? "Need better planning"
-                                  : "Make sure to manage better."}
-                          </p>
-                          <div className="flex items-center gap-2 text-sm text-slate-500">
-                            <Calendar className="w-4 h-4" />
-                            <span>
-                              Analysis Period:{" "}
-                              {timeframe === "latest_month"
-                                ? "Current month"
-                                : "All time"}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
+                <HealthScoreCard timeframe={timeframe} healthScore={summary?.financial_health_score}/>
 
                 {/* Metrics Grid */}
                 <motion.div
@@ -681,7 +558,7 @@ export default function AnalysisPage() {
                     </CardContent>
                   </Card>
                 </motion.div>
-                <PredictiveForm userId={userId} />
+                <PredictiveForm summary={summary} />
               </motion.div>
             ) : (
               // Empty State

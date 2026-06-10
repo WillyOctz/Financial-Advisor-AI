@@ -110,7 +110,9 @@ class DisplayService:
             "financial_health_score": financial_health_score,
             "average_daily_spending": expenses / 30 if timeframe == "latest_month" else expenses,
             "discretionary_spending": self._calculate_discretionary_spending(expense_categories),
-            "essential_spending": self._calculate_essential_spending(expense_categories)
+            "essential_spending": self._calculate_essential_spending(expense_categories),
+            "earliest_transaction_date": min(t.date for t in transactions).isoformat() if transactions else None,
+            "data_period_days": (datetime.now() - min(t.date for t in transactions)).days if transactions else 0,
         }
     
         if timeframe == "today":
@@ -224,14 +226,16 @@ class DisplayService:
             score += 30
         elif expense_ratio <= 0.7:
             score += 20
-        elif expense_ratio <= 0.0:
+        elif expense_ratio <= 0.9:
             score += 10
+        elif expense_ratio >= 1.0:
+            score == 0
 
         # Positive net savings component (30 points max)
         if net_savings > 0:
             score += min(30, int((net_savings / income) * 100))
 
-        return min(100, score)
+        return min(100, max(0, score))
     
     def _calculate_discretionary_spending(self, expense_categories: Dict[str, float]) -> float:
         """Calculate discretionary (non-essential) spending"""

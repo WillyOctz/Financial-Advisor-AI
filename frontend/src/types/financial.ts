@@ -37,6 +37,8 @@ export interface FinancialSummary {
   average_daily_spending?: number;
   discretionary_spending?: number;
   essential_spending?: number;
+  earliest_transaction_date?: string | null;
+  data_period_days?: number;
   spending_patterns?: {
     highest_spending_day?: [string, number];
     most_frequent_category?: [string, number];

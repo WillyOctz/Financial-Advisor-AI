@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import { motion } from "framer-motion";
 import {
   BarChart,
   Bar,
@@ -9,12 +8,10 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
-  Cell,
+  ReferenceLine,
 } from "recharts";
 import { FinancialSummary } from "@/types/financial";
-import { TrendingUp, TrendingDown, DollarSign } from "lucide-react";
 import { useCurrency } from "@/lib/hooks/useCurrency";
 import { formatCurrency, formatCompactCurrency } from "@/lib/utils/currency";
 
@@ -22,323 +19,181 @@ interface IncomeExpenseChartProps {
   data: FinancialSummary[];
 }
 
+const CustomTooltip = ({
+  active,
+  payload,
+  label,
+  currency,
+}: any) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xl">
+      <p className="text-sm font-semibold text-slate-700 mb-2">{label}</p>
+      {payload.map((entry: any, i: number) => (
+        <div key={i} className="flex items-center gap-2 text-sm">
+          <div
+            className="w-3 h-3 rounded-full"
+            style={{ background: entry.fill }}
+          />
+          <span className="text-slate-600">{entry.name}:</span>
+          <span
+            className={`font-semibold ${
+              entry.value < 0 ? "text-rose-600" : "text-slate-900"
+            }`}
+          >
+            {formatCurrency(Math.abs(entry.value), currency)}
+            {entry.value < 0 ? " (negative)" : ""}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export const IncomeExpenseChart: React.FC<IncomeExpenseChartProps> = ({
   data,
 }) => {
   const { currency } = useCurrency();
-  const [activeBar, setActiveBar] = useState<string | null>(null);
-  const [visibleBars, setVisibleBars] = useState({
-    income: true,
-    expense: true,
-    savings: true,
-  });
+  const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
 
-  const chartData = data.map((summary) => ({
-    month: summary.timeframe,
-    income: summary.total_income,
-    expense: summary.total_expenses,
-    savings: summary.net_savings,
+  const chartData = data.map((d) => ({
+    name: d.timeframe === "latest_month" ? "This Month" : "all_time",
+    Income: d.total_income,
+    Expenses: d.total_expenses,
+    "Net Savings": d.net_savings,
   }));
 
-  // calculate totals for summary
-  const totals = chartData.reduce(
-    (acc, item) => ({
-      income: acc.income + item.income,
-      expense: acc.expense + item.expense,
-      savings: acc.savings + item.savings,
-    }),
-    { income: 0, expense: 0, savings: 0 },
-  );
+  // Compute Y-axis domain to always include 0 and handle negatives
+  const allValues = chartData.flatMap((d) => [
+    hiddenSeries.has("Income") ? 0 : d.Income,
+    hiddenSeries.has("Expenses") ? 0 : d.Expenses,
+    hiddenSeries.has("Net Savings") ? 0 : d["Net Savings"],
+  ]);
+  const minVal = Math.min(0, ...allValues);
+  const maxVal = Math.max(0, ...allValues);
+  const padding = (maxVal - minVal) * 0.15 || maxVal * 0.15 || 100;
+  const yMin = minVal < 0 ? minVal - padding : 0;
+  const yMax = maxVal + padding;
 
-  // custom animated tooltip
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8, y: -10 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          className="bg-white p-4 border-2 border-slate-200 rounded-xl shadow-2xl"
-        >
-          <p className="font-bold text-slate-900 mb-3 text-lg">{label}</p>
-          <div className="space-y-2">
-            {payload.map((entry: any, index: number) => (
-              <motion.div
-                key={index}
-                className="flex items-center justify-between gap-4"
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: entry.color }}
-                  />
-                  <span className="text-sm font-medium text-slate-600 capitalize">
-                    {entry.name}
-                  </span>
-                </div>
-                <span className="font-bold text-slate-900">
-                  {formatCurrency(Number(entry.value), currency)}
-                </span>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      );
-    }
-    return null;
+  const hasNegative = minVal < 0;
+
+  const toggleSeries = (series: string) => {
+    setHiddenSeries((prev) => {
+      const next = new Set(prev);
+      if (next.has(series)) next.delete(series);
+      else next.add(series);
+      return next;
+    });
   };
 
-  // custom animated bar with gradient
-  const CustomBar = (props: any) => {
-    const { fill, x, y, width, height, name } = props;
-    const isActive = activeBar === name;
-
-    return (
-      <motion.g
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        {/* Glow effect when active */}
-        {isActive && (
-          <rect
-            x={x - 2}
-            y={y - 2}
-            width={width + 4}
-            height={height + 4}
-            fill={fill}
-            opacity={0.3}
-            rx={6}
-          />
-        )}
-        {/* Main bar */}
-        <rect
-          x={x}
-          y={y}
-          width={width}
-          height={height}
-          fill={fill}
-          rx={4}
-          className="transition-all cursor-pointer"
-          style={{
-            filter: isActive ? "brightness(1.1)" : "brightness(1)",
-          }}
-        />
-      </motion.g>
-    );
-  };
-
-  // Toggle bar visibility
-  const toggleBar = (bar: "income" | "expense" | "savings") => {
-    setVisibleBars((prev) => ({ ...prev, [bar]: !prev[bar] }));
-  };
-
-  if (chartData.length === 0) {
-    return (
-      <div className="w-full h-80 bg-linear-to-br from-slate-50 to-blue-50 rounded-xl border border-slate-200 flex items-center justify-center">
-        <motion.div
-          className="text-center"
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-        >
-          <motion.div
-            animate={{
-              y: [0, -10, 0],
-            }}
-            transition={{
-              duration: 2,
-              repeat: Infinity,
-              ease: "easeInOut",
-            }}
-          >
-            <DollarSign className="w-16 h-16 text-blue-400 mx-auto mb-4" />
-          </motion.div>
-          <p className="text-slate-600 font-medium">
-            No financial data available
-          </p>
-        </motion.div>
-      </div>
-    );
-  }
+  const seriesConfig = [
+    { key: "Income", color: "#10b981" },
+    { key: "Expenses", color: "#f43f5e" },
+    { key: "Net Savings", color: "#3b82f6" },
+  ];
 
   return (
-    <motion.div
-      className="w-full space-y-6"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-    >
-      {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-6">
-        {/* Total income */}
-        <motion.div
-          className="p-6 rounded-xl bg-linear-to-br from-emerald-50 to-teal-50 border border-emerald-100 cursor-pointer"
-          whileHover={{ scale: 1.03, y: -2 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => toggleBar("income")}
-          style={{ opacity: visibleBars.income ? 1 : 1.05 }}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <TrendingUp className="w-5 h-5 text-emerald-600" />
-            <span className="text-xs text-emerald-600 font-medium">
-              Total Income
-            </span>
-          </div>
-          <motion.p
-            className="text-xl md:text-2xl font-bold text-emerald-900 truncate"
-            initial={{ opacity: 0, scale: 0 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2, type: "spring" }}
-          >
-            {formatCompactCurrency(totals.income, currency)}
-          </motion.p>
-        </motion.div>
-
-        {/* Total expense */}
-        <motion.div
-          className="p-4 rounded-xl bg-linear-to-br from-rose-50 to-pink-50 border border-rose-100 cursor-pointer"
-          whileHover={{ scale: 1.03, y: -2 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => toggleBar("expense")}
-          style={{ opacity: visibleBars.expense ? 1 : 0.5 }}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <TrendingDown className="w-5 h-5 text-rose-600" />
-            <span className="text-xs text-rose-600 font-medium">
-              Total Expenses
-            </span>
-          </div>
-          <motion.p
-            className="text-xl md:text-2xl font-bold text-rose-900 truncate"
-            initial={{ opacity: 0, scale: 0 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.3, type: "spring" }}
-          >
-            {formatCompactCurrency(totals.expense, currency)}
-          </motion.p>
-        </motion.div>
-
-        {/* Total savings */}
-        <motion.div
-          className="p-4 rounded-xl bg-linear-to-br from-blue-50 to-cyan-50 border border-blue-100 cursor-pointer"
-          whileHover={{ scale: 1.03, y: -2 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => toggleBar("savings")}
-          style={{ opacity: visibleBars.savings ? 1 : 0.5 }}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <DollarSign className="w-5 h-5 text-blue-600" />
-            <span className="text-xs text-blue-600 font-medium">
-              Total Savings
-            </span>
-          </div>
-          <motion.p
-            className="text-xl md:text-2xl font-bold text-blue-900 truncate"
-            initial={{ opacity: 0, scale: 0 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.3, type: "spring" }}
-          >
-            {formatCompactCurrency(totals.savings, currency)}
-          </motion.p>
-        </motion.div>
+    <div className="space-y-4">
+      {/* Summary cards */}
+      <div className="grid grid-cols-3 gap-3">
+        {seriesConfig.map(({ key, color }) => {
+          const val = chartData[0]?.[key as keyof typeof chartData[0]] as number ?? 0;
+          const isNeg = val < 0;
+          return (
+            <button
+              key={key}
+              onClick={() => toggleSeries(key)}
+              className={`text-left p-3 rounded-xl border-2 transition-all ${
+                hiddenSeries.has(key)
+                  ? "opacity-40 border-slate-200 bg-slate-50"
+                  : "border-transparent bg-slate-50 hover:bg-white hover:shadow-md"
+              }`}
+            >
+              <p className="text-xs text-slate-500 mb-1">{key}</p>
+              <p
+                className="text-lg font-bold truncate"
+                style={{ color: isNeg ? "#f43f5e" : color }}
+              >
+                {isNeg ? "-" : ""}
+                {formatCompactCurrency(Math.abs(val), currency)}
+              </p>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Charts */}
-      <div className="w-full h-80 bg-white rounded-xl border border-slate-200 p-4">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={chartData}
-            margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-            onMouseMove={(state) => {
-              if (state && state.activeLabel) {
-                setActiveBar(state.activeLabel);
-              }
-            }}
-            onMouseLeave={() => setActiveBar(null)}
-          >
-            <defs>
-              {/* Gradient for income */}
-              <linearGradient id="incomeGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#10b981" stopOpacity={1} />
-                <stop offset="100%" stopColor="#14b8a6" stopOpacity={0.8} />
-              </linearGradient>
-              {/* Gradient for Expense */}
-              <linearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#ef4444" stopOpacity={1} />
-                <stop offset="100%" stopColor="#ec4899" stopOpacity={0.8} />
-              </linearGradient>
-              {/* Gradient for Savings */}
-              <linearGradient id="savingsGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#3b82f6" stopOpacity={1} />
-                <stop offset="100%" stopColor="#06b6d4" stopOpacity={0.8} />
-              </linearGradient>
-            </defs>
+      {/* Chart */}
+      <ResponsiveContainer width="100%" height={280}>
+        <BarChart
+          data={chartData}
+          margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+          <XAxis
+            dataKey="name"
+            tick={{ fontSize: 12, fill: "#94a3b8" }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            domain={[yMin, yMax]}
+            tickFormatter={(v) => formatCompactCurrency(v, currency)}
+            tick={{ fontSize: 11, fill: "#94a3b8" }}
+            axisLine={false}
+            tickLine={false}
+            width={80}
+          />
+          <Tooltip
+            content={<CustomTooltip currency={currency} />}
+            cursor={{ fill: "rgba(148,163,184,0.1)" }}
+          />
 
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="#e2e8f0"
-              opacity={0.5}
+          {/* Zero reference line — only shown when there are negative values */}
+          {hasNegative && (
+            <ReferenceLine
+              y={0}
+              stroke="#94a3b8"
+              strokeWidth={1.5}
+              strokeDasharray="4 4"
+              label={{
+                value: "0",
+                position: "right",
+                fill: "#94a3b8",
+                fontSize: 11,
+              }}
             />
-            <XAxis
-              dataKey="month"
-              tick={{ fill: "#64748b", fontSize: 12 }}
-              tickLine={{ stroke: "#cbd5e1" }}
-            />
-            <YAxis
-              tick={{ fill: "#64748b", fontSize: 12 }}
-              tickLine={{ stroke: "#cbd5e1" }}
-              tickFormatter={(value) => formatCurrency(value, currency)}
-            />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f1f5f9" }} />
+          )}
 
-            {/* Animated Bars */}
-            {visibleBars.income && (
-              <Bar
-                dataKey="income"
-                fill="url(#incomeGradient)"
-                name="Income"
-                radius={[8, 8, 0, 0]}
-                shape={<CustomBar />}
-                animationDuration={1000}
-                animationBegin={0}
-              />
-            )}
-            {visibleBars.expense && (
-              <Bar
-                dataKey="expense"
-                fill="url(#expenseGradient)"
-                name="Expense"
-                radius={[8, 8, 0, 0]}
-                shape={<CustomBar />}
-                animationDuration={1000}
-                animationBegin={200}
-              />
-            )}
-            {visibleBars.savings && (
-              <Bar
-                dataKey="savings"
-                fill="url(#savingsGradient)"
-                name="Savings"
-                radius={[8, 8, 0, 0]}
-                shape={<CustomBar />}
-                animationDuration={1000}
-                animationBegin={400}
-              />
-            )}
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+          {!hiddenSeries.has("Income") && (
+            <Bar
+              dataKey="Income"
+              fill="#10b981"
+              radius={[6, 6, 0, 0]}
+              maxBarSize={60}
+            />
+          )}
+          {!hiddenSeries.has("Expenses") && (
+            <Bar
+              dataKey="Expenses"
+              fill="#f43f5e"
+              radius={[6, 6, 0, 0]}
+              maxBarSize={60}
+            />
+          )}
+          {!hiddenSeries.has("Net Savings") && (
+            <Bar
+              dataKey="Net Savings"
+              fill="#3b82f6"
+              radius={[6, 6, 0, 0]}
+              maxBarSize={60}
+            />
+          )}
+        </BarChart>
+      </ResponsiveContainer>
 
-      {/* Interactive Legend Hint */}
-      <motion.div
-        className="text-center text-sm text-slate-500"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1 }}
-      >
-        <p>💡 Click on the summary cards above to toggle data series</p>
-      </motion.div>
-    </motion.div>
+      <p className="text-xs text-slate-400 text-center">
+        💡 Click on the summary cards above to toggle data series
+      </p>
+    </div>
   );
 };

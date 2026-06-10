@@ -31,6 +31,8 @@ This project combines data processing, machine learning, and LLM-based advisory 
 - FastAPI
 - SQLAlchemy
 - Redis (caching)
+- PostgreSql
+
 ### Frontend
 - React / Next.js
 - Framer motion
